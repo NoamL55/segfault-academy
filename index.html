@@ -1,0 +1,1059 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:dark}html,body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Segfault Academy</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout : une colonne de jeu centree ; la progression se lit comme une rangee de cases memoire avec leurs adresses (0x20, 0x24...), comme dans les schemas du cours. */
+:root {
+  /* Univers unique, volontairement sombre : l'espace. */
+  color-scheme: dark;
+  --bg: #0b0d24; --surface: #151a3d; --ink: #eef0ff; --muted: #9aa3d6; --line: #2c3470;
+  --cell: #7df0c8; --cell-ink: #06281f; --cell-empty: #222a5c;
+  --accent: #b18cff; --on-accent: #0b0d24;
+  --good: #6fe3a1; --good-bg: #123b33; --bad: #ff8fa3; --bad-bg: #4a1c33; --warn: #ffc857;
+  --term: #060716; --term-ink: #eef0ff; --star: #cfd6ff;
+  --display: "Space Grotesk", "Segoe UI", sans-serif;
+  --body: "Inter", "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", Consolas, monospace;
+}
+* { box-sizing: border-box }
+.ia { display: flex; gap: 12px; align-items: flex-start }
+.ia svg { flex: 0 0 44px; width: 44px; height: 44px }
+.ia > div { min-width: 0; display: flex; flex-direction: column; gap: 4px }
+.bubble { background: var(--bg); border: 1px solid var(--line); border-radius: 4px 12px 12px 12px; padding: 8px 12px }
+.cells i.on { box-shadow: 0 0 8px var(--cell) }
+body { background-color: var(--bg);
+  background-image: radial-gradient(1.5px 1.5px at 24px 38px, var(--star), transparent), radial-gradient(1px 1px at 130px 90px, var(--star), transparent), radial-gradient(1.5px 1.5px at 200px 20px, var(--accent), transparent), radial-gradient(1px 1px at 70px 170px, var(--star), transparent), radial-gradient(1px 1px at 180px 210px, var(--cell), transparent), radial-gradient(1px 1px at 250px 140px, var(--star), transparent);
+  background-size: 280px 260px; color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.5; min-height: 100%;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px }
+.wrap { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; line-height: 1.2 }
+h1 { font-size: 1.7rem } h2 { font-size: 1.25rem } h3 { font-size: 1.05rem }
+p { margin: 0 }
+code, pre { font-family: var(--mono); font-size: 0.9em }
+code { background: var(--cell-empty); padding: 1px 5px; border-radius: 4px }
+button { font: inherit; color: inherit; cursor: pointer }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px }
+.muted { color: var(--muted) } .small { font-size: 0.875rem }
+.top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between }
+.brand { display: flex; flex-direction: column; gap: 2px }
+.stats { display: flex; flex-wrap: wrap; gap: 8px }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; display: flex; flex-direction: column; min-width: 84px }
+.stat b { font-family: var(--display); font-size: 1.15rem; font-variant-numeric: tabular-nums }
+.stat span { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center }
+.between { justify-content: space-between }
+.btn { background: var(--accent); color: var(--on-accent); border: 0; border-radius: 8px; padding: 10px 18px; font-weight: 600 }
+.btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line) }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; text-align: left; display: flex; flex-direction: column; gap: 10px; min-width: 0 }
+.card:hover { border-color: var(--accent) }
+.cells { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px }
+.cells i { display: block; height: 16px; border-radius: 3px; background: var(--cell-empty) }
+.cells i.on { background: var(--cell) }
+.addr { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.7rem; color: var(--muted) }
+.pct { font-family: var(--display); font-weight: 700; font-variant-numeric: tabular-nums }
+.tips { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px }
+.lvl { border: 1px solid var(--line); border-radius: 10px; padding: 12px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between }
+.hud { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; font-family: var(--display); font-weight: 700 }
+.hearts { letter-spacing: 3px; color: var(--bad) }
+.bar { height: 8px; background: var(--cell-empty); border-radius: 4px; overflow: hidden }
+.bar > i { display: block; height: 100%; background: var(--accent); width: 0 }
+.bar.time > i { background: var(--warn) }
+pre.code { background: var(--term); color: var(--term-ink); border-radius: 8px; padding: 14px; margin: 0; overflow-x: auto; line-height: 1.55 }
+pre.out { background: var(--term); color: var(--term-ink); border-radius: 8px; padding: 10px 14px; margin: 0; overflow-x: auto }
+pre.out::before { content: "$ ./prog"; display: block; color: var(--cell); margin-bottom: 4px }
+.opts { display: flex; flex-direction: column; gap: 8px }
+.opt { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; text-align: left; font-family: var(--mono); font-size: 0.92rem; white-space: pre-wrap; overflow-wrap: anywhere }
+.opt:hover:not([disabled]) { border-color: var(--accent) }
+.opt.good { background: var(--good-bg); border-color: var(--good) }
+.opt.bad { background: var(--bad-bg); border-color: var(--bad) }
+.opt.line { border-radius: 4px; padding: 6px 12px }
+.slot { border: 1px dashed var(--line); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px; min-height: 48px }
+input.ans { font-family: var(--mono); font-size: 1rem; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); flex: 1 1 200px; min-width: 0 }
+.fb { position: relative; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px }
+.fb.good { background: var(--good-bg); border: 1px solid var(--good) }
+.fb.bad { background: var(--bad-bg); border: 1px solid var(--bad) }
+.fb h3 { color: var(--ink) }
+.hint { border-left: 4px solid var(--warn); padding: 6px 12px; background: var(--bg); border-radius: 0 6px 6px 0 }
+.tag { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600 }
+.big { font-family: var(--display); font-size: 2.4rem; font-weight: 700; font-variant-numeric: tabular-nums }
+.miss { border-top: 1px solid var(--line); padding-top: 10px; display: flex; flex-direction: column; gap: 4px }
+.burst { display: none }
+@media (prefers-reduced-motion: no-preference) {
+  body { animation: drift 90s linear infinite }
+  @keyframes drift { to { background-position: -280px 520px } }
+  .bar > i { transition: width 0.3s }
+  .pop { animation: pop 0.3s ease-out }
+  @keyframes pop { from { transform: translateY(10px) scale(0.98); opacity: 0 } to { transform: none; opacity: 1 } }
+  .card { transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s }
+  .card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px -12px var(--accent) }
+  .grid .card { animation: pop 0.35s ease-out backwards }
+  .grid .card:nth-child(2) { animation-delay: 0.04s } .grid .card:nth-child(3) { animation-delay: 0.08s } .grid .card:nth-child(4) { animation-delay: 0.12s }
+  .grid .card:nth-child(5) { animation-delay: 0.16s } .grid .card:nth-child(6) { animation-delay: 0.2s } .grid .card:nth-child(7) { animation-delay: 0.24s } .grid .card:nth-child(8) { animation-delay: 0.28s }
+  .btn, .opt { transition: transform 0.1s, border-color 0.15s, background-color 0.15s }
+  .btn:active:not([disabled]), .opt:active:not([disabled]) { transform: scale(0.97) }
+  .ia svg { animation: bob 3s ease-in-out infinite }
+  @keyframes bob { 50% { transform: translateY(-4px) rotate(-4deg) } }
+  .cells i.on { animation: glow 2.4s ease-in-out infinite }
+  @keyframes glow { 50% { box-shadow: 0 0 2px var(--cell) } }
+  .opt.good { animation: yes 0.4s }
+  @keyframes yes { 40% { transform: scale(1.03) } }
+  .shake { animation: shake 0.4s }
+  @keyframes shake { 20% { transform: translateX(-8px) } 40% { transform: translateX(7px) } 60% { transform: translateX(-5px) } 80% { transform: translateX(3px) } }
+  .hearts { display: inline-block } .hearts.hit { animation: shake 0.4s }
+  .combo { display: inline-block; animation: yes 0.4s }
+  .bar.time > i { transition: width 0.25s linear }
+  .big { animation: pop 0.5s ease-out backwards }
+  .burst { display: block; position: absolute; left: 50%; top: 24px; pointer-events: none }
+  .burst i { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--cell); animation: fly 0.8s ease-out forwards }
+  .burst i:nth-child(odd) { background: var(--warn) } .burst i:nth-child(3n) { background: var(--accent) }
+  @keyframes fly { to { transform: translate(var(--dx), var(--dy)) scale(0.2); opacity: 0 } }
+  .burst b { position: absolute; left: -30px; width: 60px; text-align: center; font-family: var(--display); font-size: 1.4rem; color: var(--warn); animation: rise 1s ease-out forwards }
+  @keyframes rise { to { transform: translateY(-46px); opacity: 0 } }
+}
+#sky { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none }
+body { background-image: none; animation: none }
+body > .wrap { position: relative; z-index: 1 }
+.ic { width: 20px; height: 20px; flex: 0 0 auto }
+.stat { flex-direction: row; align-items: center; gap: 6px; min-width: 0 }
+.hero { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: center; padding-block: 8px }
+.herotxt { display: flex; flex-direction: column; gap: 6px; min-width: 180px }
+.ship { width: 138px; height: 72px }
+.scene .ship { width: 92px; height: 48px }
+.alien { width: 84px; height: 84px }
+.alien.sm { width: 44px; height: 44px }
+.map { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px }
+.world { background: none; border: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px; border-radius: 12px; color: var(--ink) }
+.world b { font-family: var(--display); font-size: 0.95rem; text-align: center }
+.pl { position: relative; width: 104px; height: 104px; display: grid; place-items: center }
+.pl.xl { width: 140px; height: 140px }
+.pl.xl .planet { width: 96px; height: 96px }
+.rg { position: absolute; inset: 0; width: 100%; height: 100% }
+.planet { width: 68px; height: 68px; border-radius: 50%; background: radial-gradient(circle at 32% 30%, var(--c1), var(--c2) 78%); box-shadow: inset -10px -10px 18px rgba(0, 0, 0, 0.55), 0 0 22px var(--c1) }
+.patrol { display: flex; align-items: center; gap: 14px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 8px 22px 8px 8px; align-self: center; font-family: var(--display); font-weight: 700 }
+.patrol[disabled] { opacity: 0.5; cursor: not-allowed }
+.radar { width: 48px; height: 48px }
+.badge { background: var(--bad); color: var(--bg); border-radius: 999px; padding: 0 9px; font-variant-numeric: tabular-nums }
+.path { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px }
+.node { width: 118px; background: var(--surface); border: 2px solid var(--accent); border-radius: 16px; padding: 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--ink) }
+.node[disabled] { border-color: var(--line); opacity: 0.55; cursor: not-allowed }
+.node .num { font-family: var(--display); font-size: 1.8rem; font-weight: 700; line-height: 1; height: 30px; display: grid; place-items: center }
+.node .ic { width: 26px; height: 26px }
+.pips { display: inline-flex; gap: 4px }
+.pips i { width: 10px; height: 10px; border-radius: 50%; background: var(--cell-empty) }
+.pips i.on { background: var(--cell) }
+details.panel > summary { cursor: pointer; font-family: var(--display); font-weight: 700 }
+.scene { position: relative; height: 150px; border: 1px solid var(--line); border-radius: 14px; background: linear-gradient(180deg, var(--term), var(--surface)); overflow: hidden; display: flex; align-items: flex-end; justify-content: space-between; padding: 0 20px 14px }
+.sctop { position: absolute; top: 8px; left: 12px; right: 44px; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--display) }
+.sh { color: var(--cell); display: inline-flex }
+.sh.off { color: var(--cell-empty) }
+.hp { display: inline-flex; gap: 3px }
+.hp i { width: 12px; height: 7px; border-radius: 2px; background: var(--bad) }
+.hp i.off { background: var(--cell-empty) }
+.laser { position: absolute; bottom: 52px; left: 118px; right: 108px; height: 4px; border-radius: 2px; background: var(--cell); box-shadow: 0 0 10px var(--cell); opacity: 0 }
+.laser.back { background: var(--bad); box-shadow: 0 0 10px var(--bad) }
+.x { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: var(--muted); font-size: 1.1rem; padding: 4px 8px }
+.hintb { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px 4px 4px; border-radius: 999px }
+.hintb svg { width: 32px; height: 32px }
+.center { align-items: center; text-align: center }
+.stars { display: flex; gap: 8px }
+.stars .ic { width: 54px; height: 54px }
+.st { opacity: 0.2; display: inline-flex }
+.st.on { opacity: 1 }
+.alien.dead { opacity: 0.35; transform: rotate(160deg) }
+.mark { width: 28px; height: 28px; flex: 0 0 auto }
+.fb h3 { display: flex; align-items: center; gap: 8px; font-size: 1.3rem }
+@media (prefers-reduced-motion: no-preference) {
+  .ship .fl { animation: flick 0.2s infinite alternate; transform-origin: 0 24px }
+  @keyframes flick { to { transform: scaleX(0.6) } }
+  .ship { animation: hover 2.6s ease-in-out infinite }
+  @keyframes hover { 50% { transform: translateY(-5px) } }
+  .alien { animation: bob 2.2s ease-in-out infinite }
+  .alien .pu { animation: look 4s ease-in-out infinite }
+  @keyframes look { 40% { transform: translateX(2px) } 60% { transform: translateX(-2px) } }
+  .world { animation: pop 0.4s ease-out backwards }
+  .world:nth-child(2n) { animation-delay: 0.08s }
+  .world:nth-child(3n) { animation-delay: 0.16s }
+  .world .planet { animation: hover 4s ease-in-out infinite }
+  .world:nth-child(2n) .planet { animation-delay: -1.3s }
+  .world:nth-child(3n) .planet { animation-delay: -2.4s }
+  .pl { transition: transform 0.2s }
+  .world:hover .pl { transform: scale(1.08) }
+  .radar .sw { animation: spin 2s linear infinite; transform-origin: 24px 24px }
+  @keyframes spin { to { transform: rotate(360deg) } }
+  .laser.go { animation: zap 0.4s ease-out; transform-origin: left }
+  .laser.back.go { transform-origin: right }
+  @keyframes zap { 0% { transform: scaleX(0); opacity: 1 } 60% { transform: scaleX(1); opacity: 1 } 100% { transform: scaleX(1); opacity: 0 } }
+  .hit { animation: hit 0.5s 0.2s }
+  @keyframes hit { 20% { transform: translateX(8px) rotate(8deg); filter: brightness(2.2) } 50% { transform: translateX(-6px) rotate(-6deg) } 80% { transform: translateX(3px) } }
+  .st.on { animation: starpop 0.5s ease-out backwards }
+  @keyframes starpop { from { transform: scale(0) rotate(-90deg) } 70% { transform: scale(1.3) } }
+  .alien.dead { animation: flee 1s ease-in forwards }
+  @keyframes flee { to { transform: translate(60px, -40px) rotate(300deg) scale(0.3); opacity: 0.2 } }
+  .node { transition: transform 0.15s }
+  .node:not([disabled]):hover { transform: translateY(-4px) }
+}
+</style>
+
+<canvas id="sky" aria-hidden="true"></canvas>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <h1>Segfault Academy</h1>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+  <main id="app" class="wrap" style="gap:20px"></main>
+</div>
+
+<script>
+const R = String.raw;
+
+const NOTIONS = [
+  { id: 'ops', name: 'Pièges de base', desc: '= et ==, les formats de printf et scanf, strcmp',
+    tips: ['`=` range une valeur, `==` compare. Dans un `if`, c\'est presque toujours `==`.',
+           '`scanf` a besoin de l\'adresse : `&n` pour un nombre, mais pas de `&` pour un tableau de `char`.',
+           'Formats : `%d` pour un int, `%g` pour afficher un double, `%lf` pour lire un double, `%s` pour une chaîne, `%c` pour un caractère.',
+           'On ne compare jamais deux chaînes avec `==` : on écrit `strcmp(a, b) == 0`.'] },
+  { id: 'str', name: 'Chaînes de caractères', desc: 'Le \'\\0\', strlen, strcpy, strcat, strchr',
+    tips: ['Une chaîne est un tableau de `char` terminé par `\'\\0\'`, le panneau STOP.',
+           '`"Chat"` occupe 5 cases : 4 lettres plus le `\'\\0\'`.',
+           'On ne copie pas une chaîne avec `=` : on utilise `strcpy(dest, src)`.',
+           'Presque toutes les fonctions avancent case par case : `while(chaine[i] != \'\\0\')`.'] },
+  { id: 'ptr', name: 'Pointeurs', desc: 'L\'adresse avec &, le contenu avec *',
+    tips: ['`&a` donne l\'adresse de `a`. Un pointeur est une variable qui contient une adresse.',
+           '`p` est l\'adresse (le papier), `*p` est la case à cette adresse (la maison).',
+           '`p = ...` change où pointe `p`. `*p = ...` écrit dans la case pointée.',
+           'Ajouter une `*` enlève une étoile au type : si `p` est un `char *`, alors `*p` est un `char`.'] },
+  { id: 'mem', name: 'Allocation dynamique', desc: 'malloc, calloc, realloc, free',
+    tips: ['La formule est toujours : nombre de cases × `sizeof(type d\'une case)`.',
+           'Le type dans `sizeof` est celui du tableau avec une étoile en moins : `Contact *` donne `sizeof(Contact)`.',
+           '`malloc` peut renvoyer `NULL` : on le vérifie à chaque fois.',
+           'Tout ce qui est alloué doit être libéré avec `free`, et on ne touche plus à la zone après.'] },
+  { id: 'file', name: 'Fichiers', desc: 'fopen, fprintf, fscanf, fread, fwrite, fclose',
+    tips: ['`fopen(chemin, mode)` renvoie un `FILE *`. C\'est lui qu\'on passe ensuite, jamais le nom du fichier.',
+           'Modes : `"r"` pour lire, `"w"` pour écrire (efface le fichier), `"a"` pour ajouter à la fin.',
+           '`fprintf` et `fscanf` marchent comme `printf` et `scanf`, avec le fichier en premier argument.',
+           '`fscanf` renvoie le nombre de valeurs lues : on boucle tant qu\'il renvoie le nombre attendu.'] },
+  { id: 'st', name: 'Structures', desc: 'struct, typedef, le point et la flèche',
+    tips: ['Une structure regroupe plusieurs champs sous un seul nom.',
+           'Avec une variable : `perso.vie`. Avec un pointeur : `perso->vie`.',
+           '`typedef struct Stats Stats;` permet d\'écrire `Stats` au lieu de `struct Stats`.',
+           'Passer une structure à une fonction la copie. Pour la modifier, on passe son adresse.'] },
+  { id: 'mod', name: 'Modules et préprocesseur', desc: 'Fichiers .h et .c, #include, #define, Makefile',
+    tips: ['Le `.h` contient les déclarations (les prototypes), le `.c` contient le code.',
+           '`#include "fichier.h"` pour un fichier du projet, `#include <stdio.h>` pour une bibliothèque du système.',
+           '`#define` fait un simple remplacement de texte avant la compilation.',
+           'Un Makefile ne recompile que les fichiers qui ont changé.'] },
+  { id: 'gen', name: 'Généricité', desc: 'Pointeurs de fonctions, void *, qsort',
+    tips: ['Un pointeur de fonction contient l\'adresse d\'une fonction : on peut la passer en paramètre.',
+           '`void *` est un pointeur sur n\'importe quel type. Il faut le convertir avant de lire la case.',
+           '`qsort` trie n\'importe quel tableau grâce à une fonction de comparaison que tu lui donnes.',
+           'La fonction de comparaison renvoie un nombre négatif, 0 ou positif, comme `strcmp`.'] }
+];
+
+const Q = [
+/* ---------- Pieges de base ---------- */
+{ i: 'ops1', n: 'ops', l: 1, t: 'qcm', q: 'Quel test vérifie que `n` vaut 5 ?', o: ['if(n = 5)', 'if(n == 5)', 'if(n === 5)'], a: 1,
+  h: 'Un seul signe égal range une valeur dans la variable.', e: '`==` compare. `=` rangerait 5 dans `n`, et le test serait toujours vrai.' },
+{ i: 'ops2', n: 'ops', l: 1, t: 'qcm', q: 'Quel format affiche un `double` sans zéros inutiles ?', o: ['%d', '%g', '%s', '%c'], a: 1,
+  h: '`%d` est réservé aux entiers.', e: '`%g` affiche 5.5 pour 5.5 et 1 pour 1.0. `%d` afficherait n\'importe quoi avec un double.' },
+{ i: 'ops3', n: 'ops', l: 1, t: 'qcm', q: 'Comment tester que deux chaînes `a` et `b` ont le même contenu ?', o: ['a == b', 'strcmp(a, b) == 0', 'strcmp(a, b) == 1', 'a = b'], a: 1,
+  h: 'La fonction de comparaison renvoie 0 quand il n\'y a aucune différence.', e: '`strcmp` renvoie 0 quand les chaînes sont identiques. `a == b` compare seulement les adresses.' },
+{ i: 'ops4', n: 'ops', l: 1, t: 'trou', q: 'Complète pour lire un entier dans la variable `n`.', c: R`int n;
+scanf("%d", ___);`, a: ['&n'],
+  h: 'scanf a besoin de savoir où ranger la valeur.', e: '`&n` donne l\'adresse de `n`. Sans le `&`, scanf écrirait n\'importe où en mémoire.' },
+{ i: 'ops5', n: 'ops', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int a = 7, b = 2;
+printf("%d\n", a / b);`, o: ['3.5', '3', '4', '3.0'], a: 1,
+  h: 'Les deux nombres sont des entiers.', e: 'Entre deux `int`, la division est entière : 7 / 2 donne 3. Pour obtenir 3.5, il faut écrire `(float)a / b`.', out: '3' },
+{ i: 'ops6', n: 'ops', l: 2, t: 'bug', q: 'Clique sur la ligne qui contient le bug.', c: ['int age;', R`printf("Age ? ");`, R`scanf("%d", age);`, R`printf("%d\n", age);`], a: 2,
+  h: 'Regarde ce que reçoit scanf.', e: 'Il manque le `&` : il faut `scanf("%d", &age);`. scanf a besoin de l\'adresse de la variable.' },
+{ i: 'ops7', n: 'ops', l: 2, t: 'trou', q: 'Complète le format pour lire un mot sans jamais déborder du tableau.', c: R`char nom[64];
+scanf("___", nom);`, a: ['%63s'],
+  h: 'Il faut garder une case pour le caractère de fin.', e: '`%63s` lit au plus 63 lettres, ce qui laisse la 64e case pour le `\'\\0\'`.' },
+{ i: 'ops8', n: 'ops', l: 2, t: 'qcm', q: 'Que vaut `x` à la fin ?', c: R`int x = 3;
+if(x = 0) {
+  x = 10;
+}`, o: ['3', '0', '10'], a: 1,
+  h: 'Compte les signes égal dans le if.', e: '`x = 0` range 0 dans `x`. Le test vaut alors 0, donc faux : on n\'entre pas dans le bloc, et `x` reste à 0.' },
+{ i: 'ops9', n: 'ops', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`printf("%d\n", strcmp("aaa", "aab") < 0);`, o: ['0', '1', '-1'], a: 1,
+  h: '"aaa" vient avant "aab" dans l\'ordre alphabétique.', e: '`strcmp` renvoie un nombre négatif car "aaa" vient avant "aab". Le test `< 0` est donc vrai, et vrai s\'affiche 1.', out: '1' },
+{ i: 'ops10', n: 'ops', l: 3, t: 'qcm', q: 'Quel format utilise `scanf` pour lire un `double` ?', o: ['%d', '%f', '%lf', '%g'], a: 2,
+  h: 'Ce n\'est pas le même que pour printf.', e: 'scanf lit un `double` avec `%lf`, et un `float` avec `%f`.' },
+{ i: 'ops11', n: 'ops', l: 3, t: 'ordre', q: 'Remets les lignes dans l\'ordre pour lire deux entiers et afficher le plus grand.',
+  c: ['int a, b;', R`scanf("%d %d", &a, &b);`, 'if(a > b) {', R`  printf("%d\n", a);`, '} else {', R`  printf("%d\n", b);`, '}'],
+  h: 'On déclare, on lit, puis on compare.', e: 'On déclare les variables, on les lit, puis le `if` choisit laquelle afficher.' },
+
+/* ---------- Chaines ---------- */
+{ i: 'str1', n: 'str', l: 1, t: 'qcm', q: 'Quel caractère marque la fin d\'une chaîne ?', o: [R`'\n'`, R`'\0'`, `' '`, `'0'`], a: 1,
+  h: 'C\'est le panneau STOP.', e: R`Le caractère '\0' marque la fin. Attention : '0' est le chiffre zéro, ce n'est pas la même chose.` },
+{ i: 'str2', n: 'str', l: 1, t: 'qcm', q: 'Combien de cases occupe ce tableau ?', c: R`char mot[] = "Chat";`, o: ['4', '5', '6'], a: 1,
+  h: 'N\'oublie pas le caractère de fin.', e: R`4 lettres plus le '\0' : 5 cases.` },
+{ i: 'str3', n: 'str', l: 1, t: 'qcm', q: 'Que renvoie `strlen("Bonjour")` ?', o: ['6', '7', '8'], a: 1,
+  h: 'strlen ne compte pas le caractère de fin.', e: R`strlen compte les lettres sans le '\0' : 7.` },
+{ i: 'str4', n: 'str', l: 1, t: 'trou', q: 'Complète pour copier `src` dans `dest`.', c: R`char dest[64];
+___(dest, src);`, a: ['strcpy'],
+  h: 'str comme string, cpy comme copy.', e: '`strcpy(dest, src)` recopie chaque caractère, y compris le caractère de fin.' },
+{ i: 'str5', n: 'str', l: 2, t: 'trou', q: 'Complète la boucle qui calcule la longueur d\'une chaîne.', c: R`size_t i = 0;
+while(chaine[i] != ___) {
+  i++;
+}`, a: [R`'\0'`, '0'],
+  h: 'On avance jusqu\'au panneau STOP.', e: R`On avance tant qu'on n'a pas atteint le '\0'. À la fin, i contient la longueur.` },
+{ i: 'str6', n: 'str', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`char mot[] = "Chat";
+printf("%s\n", &mot[2]);`, o: ['a', 'at', 'Chat', 'Ch'], a: 1,
+  h: '%s lit à partir de l\'adresse donnée, jusqu\'au caractère de fin.', e: '`&mot[2]` est l\'adresse de la case 2. `%s` affiche à partir de là jusqu\'à la fin : "at".', out: 'at' },
+{ i: 'str7', n: 'str', l: 2, t: 'bug', q: 'Clique sur la ligne qui ne compile pas.', c: ['char nom[64];', 'char copie[64];', R`scanf("%63s", nom);`, 'copie = nom;', R`printf("%s\n", copie);`], a: 3,
+  h: 'Peut-on affecter un tableau avec = ?', e: 'En C, on ne peut pas affecter un tableau avec `=`. Il faut écrire `strcpy(copie, nom);`.' },
+{ i: 'str8', n: 'str', l: 2, t: 'qcm', q: 'Quelle taille faut-il allouer pour copier la chaîne `s` ?', o: ['malloc(strlen(s))', 'malloc(strlen(s) + 1)', 'malloc(sizeof(s))'], a: 1,
+  h: 'Il faut de la place pour toutes les lettres, et pour une chose de plus.', e: R`Le + 1 réserve la case du '\0'. Sans lui, la copie déborde d'une case.` },
+{ i: 'str9', n: 'str', l: 3, t: 'ordre', q: 'Reconstitue le corps de la fonction `strcpy(dest, src)`.',
+  c: ['size_t i = 0;', R`while(src[i] != '\0') {`, '  dest[i] = src[i];', '  i++;', '}', R`dest[i] = '\0';`, 'return dest;'],
+  h: 'La boucle s\'arrête avant de copier le caractère de fin.', e: R`On copie case par case, puis on ajoute le '\0' à la main, car la boucle s'arrête juste avant.` },
+{ i: 'str10', n: 'str', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`printf("%s\n", strchr("Bonjour", 'j'));`, o: ['j', 'jour', 'Bon', '3'], a: 1,
+  h: 'strchr renvoie une adresse, pas un caractère.', e: '`strchr` renvoie l\'adresse du premier \'j\'. `%s` affiche donc la chaîne à partir de là : "jour".', out: 'jour' },
+{ i: 'str11', n: 'str', l: 3, t: 'qcm', q: 'Que renvoie `strcmp("chat", "chien")` ?', o: ['0', 'Un nombre négatif', 'Un nombre positif'], a: 1,
+  h: 'La première différence est à la 3e lettre : \'a\' contre \'i\'.', e: '\'a\' vient avant \'i\', donc "chat" vient avant "chien" : le résultat est négatif.' },
+{ i: 'str12', n: 'str', l: 3, t: 'trou', q: 'Complète cette version de `strcat` en une ligne.', c: R`char * strcat(char * dest, const char * src) {
+  strcpy(dest + ___, src);
+  return dest;
+}`, a: ['strlen(dest)'],
+  h: 'À quelle position se trouve la fin de dest ?', e: '`dest + strlen(dest)` pointe sur le caractère de fin de `dest`. On y copie `src`.' },
+
+/* ---------- Pointeurs ---------- */
+{ i: 'ptr1', n: 'ptr', l: 1, t: 'qcm', q: 'Que contient `p` ?', c: R`int a = 42;
+int * p = &a;`, o: ['42', 'L\'adresse de a', 'Rien du tout'], a: 1,
+  h: 'Que fait l\'opérateur & ?', e: '`&a` est l\'adresse de `a`. Le pointeur `p` contient cette adresse.' },
+{ i: 'ptr2', n: 'ptr', l: 1, t: 'qcm', q: 'Que vaut `*p` ?', c: R`int a = 42;
+int * p = &a;`, o: ['42', 'L\'adresse de a', '0'], a: 0,
+  h: 'L\'étoile va voir dans la case pointée.', e: '`*p` est le contenu de la case pointée, donc la valeur de `a` : 42.' },
+{ i: 'ptr3', n: 'ptr', l: 1, t: 'qcm', q: 'Quel opérateur donne l\'adresse d\'une variable ?', o: ['*', '&', '->', '%'], a: 1,
+  h: 'Tu l\'écris dans chaque scanf.', e: '`&` donne l\'adresse. `*` fait le chemin inverse : il va de l\'adresse à la case.' },
+{ i: 'ptr4', n: 'ptr', l: 1, t: 'trou', q: 'Complète pour mettre 5 dans `a` en passant par le pointeur.', c: R`int a = 1;
+int * p = &a;
+___ = 5;`, a: ['*p'],
+  h: 'On veut écrire dans la case pointée.', e: '`*p = 5` écrit dans la case pointée, donc dans `a`. `p = 5` changerait l\'adresse, ce serait un bug.' },
+{ i: 'ptr5', n: 'ptr', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int a = 1, b = 2;
+int * p = &a;
+*p = 10;
+p = &b;
+*p = 20;
+printf("%d %d\n", a, b);`, o: ['1 2', '10 20', '20 20', '10 2'], a: 1,
+  h: 'Suis où pointe p à chaque ligne.', e: '`p` pointe d\'abord sur `a` (a devient 10), puis sur `b` (b devient 20).', out: '10 20' },
+{ i: 'ptr6', n: 'ptr', l: 2, t: 'qcm', q: 'Que se passe-t-il à l\'exécution ?', c: R`char * dernier = NULL;
+*dernier = 'x';`, o: ['dernier contient \'x\'', 'Le programme plante', 'Rien'], a: 1,
+  h: 'Sur quelle case pointe dernier ?', e: '`dernier` vaut `NULL` : il ne pointe sur aucune case. Écrire dedans fait planter le programme (segmentation fault).' },
+{ i: 'ptr7', n: 'ptr', l: 2, t: 'qcm', q: 'Si `p` est de type `char *`, quel est le type de `*p` ?', o: ['char *', 'char', 'char **'], a: 1,
+  h: 'Une étoile dans l\'expression enlève une étoile au type.', e: '`*p` est la case pointée : un `char`. À l\'inverse, `&p` serait un `char **`.' },
+{ i: 'ptr8', n: 'ptr', l: 2, t: 'bug', q: 'Cette fonction n\'échange rien dans le main. Clique sur la ligne fautive.', c: ['void echanger(int a, int b) {', '  int tmp = a;', '  a = b;', '  b = tmp;', '}'], a: 0,
+  h: 'La fonction reçoit-elle les variables ou des copies ?', e: 'Les paramètres sont des copies. Il faut recevoir des adresses : `void echanger(int * a, int * b)`.' },
+{ i: 'ptr9', n: 'ptr', l: 3, t: 'ordre', q: 'Reconstitue la fonction `echanger` correcte.',
+  c: ['void echanger(int * a, int * b) {', '  int tmp = *a;', '  *a = *b;', '  *b = tmp;', '}'],
+  h: 'Il faut sauvegarder une valeur avant de l\'écraser.', e: 'On garde `*a` dans `tmp`, on écrase `*a` avec `*b`, puis on met `tmp` dans `*b`.' },
+{ i: 'ptr10', n: 'ptr', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int t[] = {5, 8, 13};
+int * p = t;
+p++;
+printf("%d\n", *p);`, o: ['5', '6', '8', '13'], a: 2,
+  h: 'p++ avance le pointeur d\'une case.', e: '`p` pointe sur la case 0. `p++` le fait avancer sur la case 1, qui contient 8.', out: '8' },
+{ i: 'ptr11', n: 'ptr', l: 3, t: 'qcm', q: 'À quoi équivaut `*(t + 2)` ?', o: ['t[2]', 't + 2', '&t[2]'], a: 0,
+  h: 't + 2 est l\'adresse de la case 2.', e: '`t + 2` est l\'adresse de la case 2, et l\'étoile lit son contenu : c\'est `t[2]`.' },
+{ i: 'ptr12', n: 'ptr', l: 3, t: 'trou', q: 'Complète l\'appel pour doubler la variable `x`.', c: R`void doubler(int * n) {
+  *n = *n * 2;
+}
+
+int x = 4;
+doubler(___);`, a: ['&x'],
+  h: 'La fonction attend une adresse.', e: 'La fonction attend un `int *`, donc on lui passe l\'adresse de `x` : `&x`.' },
+
+/* ---------- Allocation ---------- */
+{ i: 'mem1', n: 'mem', l: 1, t: 'qcm', q: 'Quelle fonction libère une zone allouée ?', o: ['delete', 'free', 'release', 'fclose'], a: 1,
+  h: 'Libérer se dit to free en anglais.', e: '`free(pointeur)` rend la mémoire. `fclose` sert à fermer un fichier.' },
+{ i: 'mem2', n: 'mem', l: 1, t: 'trou', q: 'Complète pour allouer un tableau de 10 entiers.', c: R`int * t = (int *)malloc(10 * ___);`, a: ['sizeof(int)'],
+  h: 'Nombre de cases × taille d\'une case.', e: '10 cases de la taille d\'un `int` : `10 * sizeof(int)`.' },
+{ i: 'mem3', n: 'mem', l: 1, t: 'qcm', q: 'Que renvoie `malloc` quand il n\'y a plus de mémoire ?', o: ['0 octet', 'NULL', '-1'], a: 1,
+  h: 'C\'est la valeur d\'un pointeur qui ne pointe sur rien.', e: '`malloc` renvoie `NULL` en cas d\'échec. C\'est pour ça qu\'on le teste à chaque fois.' },
+{ i: 'mem4', n: 'mem', l: 1, t: 'qcm', q: 'Quelle est la différence entre `calloc` et `malloc` ?', o: ['calloc met toutes les cases à 0', 'calloc est plus rapide', 'calloc n\'a pas besoin de free'], a: 0,
+  h: 'Pense au c de clear.', e: '`calloc(nombre, taille)` alloue et met tout à 0. `malloc` laisse des valeurs quelconques.' },
+{ i: 'mem5', n: 'mem', l: 2, t: 'trou', q: 'Complète pour allouer `n` contacts.', c: R`Contact * liste = (Contact *)malloc(n * sizeof(___));`, a: ['Contact'],
+  h: 'Quel est le type d\'une case du tableau ?', e: 'Le tableau est un `Contact *`, donc chaque case est un `Contact`.' },
+{ i: 'mem6', n: 'mem', l: 2, t: 'trou', q: 'Complète pour agrandir la liste d\'une case.', c: R`liste = (Contact *)realloc(liste, (taille + 1) * ___);`, a: ['sizeof(Contact)'],
+  h: 'C\'est la même formule que pour malloc.', e: 'On demande `taille + 1` cases de la taille d\'un `Contact`.' },
+{ i: 'mem7', n: 'mem', l: 2, t: 'bug', q: 'Clique sur la ligne dangereuse.', c: ['int * t = (int *)malloc(3 * sizeof(int));', 't[0] = 1;', 'free(t);', R`printf("%d\n", t[0]);`], a: 3,
+  h: 'Dans quel ordre a-t-on le droit de lire et de libérer ?', e: 'On lit `t[0]` après le `free` : la zone ne nous appartient plus. Il faut lire avant de libérer.' },
+{ i: 'mem8', n: 'mem', l: 2, t: 'qcm', q: 'Quel est le problème de cette ligne ?', c: R`realloc(liste, (taille + 1) * sizeof(Contact));`, o: ['Il manque un cast', 'On perd la nouvelle adresse', 'Il n\'y a aucun problème'], a: 1,
+  h: 'realloc peut déplacer le tableau.', e: '`realloc` renvoie la nouvelle adresse, qui peut avoir changé. Il faut écrire `liste = realloc(...)`.' },
+{ i: 'mem9', n: 'mem', l: 3, t: 'ordre', q: 'Remets dans l\'ordre : allouer, vérifier, utiliser, libérer.',
+  c: ['int * t = NULL;', 'if((t = (int *)malloc(n * sizeof(int))) == NULL) {', '  exit(EXIT_FAILURE);', '}', 't[0] = 42;', 'free(t);', 't = NULL;'],
+  h: 'On ne touche plus à la zone après free.', e: 'On alloue en vérifiant le résultat, on utilise, on libère, puis on remet le pointeur à `NULL`.' },
+{ i: 'mem10', n: 'mem', l: 3, t: 'qcm', q: 'Combien d\'octets réserve cette ligne ? Un `double` fait 8 octets.', c: R`double * t = (double *)malloc(4 * sizeof(double));`, o: ['4', '8', '32', '64'], a: 2,
+  h: 'Nombre de cases × taille d\'une case.', e: '4 cases de 8 octets : 32 octets.' },
+{ i: 'mem11', n: 'mem', l: 3, t: 'qcm', q: 'Pour une grille `char ** grid`, quel `sizeof` utilise-t-on pour le tableau des lignes ?', o: ['sizeof(char)', 'sizeof(char *)', 'sizeof(int)'], a: 1,
+  h: 'Enlève une étoile au type de grid.', e: 'Chaque case de `grid` contient une ligne, donc un `char *`.' },
+{ i: 'mem12', n: 'mem', l: 3, t: 'qcm', q: 'Dans quel ordre libère-t-on une grille à deux dimensions ?', o: ['Le tableau des lignes, puis chaque ligne', 'Chaque ligne, puis le tableau des lignes', 'Un seul free suffit'], a: 1,
+  h: 'Si on libère le tableau d\'abord, où sont les adresses des lignes ?', e: 'On libère d\'abord chaque ligne. Si on libérait le tableau en premier, on perdrait leurs adresses.' },
+
+/* ---------- Fichiers ---------- */
+{ i: 'file1', n: 'file', l: 1, t: 'qcm', q: 'Quel mode ouvre un fichier en lecture ?', o: ['"r"', '"w"', '"a"'], a: 0,
+  h: 'Lire se dit to read.', e: '`"r"` comme read. `"w"` écrit, `"a"` ajoute à la fin.' },
+{ i: 'file2', n: 'file', l: 1, t: 'qcm', q: 'Que fait le mode `"w"` sur un fichier qui existe déjà ?', o: ['Il ajoute à la fin', 'Il efface son contenu', 'Il renvoie une erreur'], a: 1,
+  h: 'C\'est le mode le plus destructeur.', e: '`"w"` vide le fichier avant d\'écrire. Pour garder le contenu, on utilise `"a"`.' },
+{ i: 'file3', n: 'file', l: 1, t: 'trou', q: 'Complète pour ouvrir le fichier.', c: R`FILE * f = ___("notes.txt", "r");`, a: ['fopen'],
+  h: 'f comme file, puis ouvrir en anglais.', e: '`fopen(chemin, mode)` ouvre le fichier et renvoie un `FILE *`.' },
+{ i: 'file4', n: 'file', l: 1, t: 'qcm', q: 'Comment ferme-t-on le fichier ouvert dans `f` ?', c: R`FILE * f = fopen("notes.txt", "r");`, o: ['fclose("notes.txt")', 'fclose(f)', 'free(f)'], a: 1,
+  h: 'On passe toujours le FILE *.', e: 'On ferme avec le `FILE *` : `fclose(f)`. Le nom du fichier ne sert qu\'à `fopen`.' },
+{ i: 'file5', n: 'file', l: 2, t: 'trou', q: 'Complète pour écrire du texte dans le fichier `f`.', c: R`___(f, "Test.\n");`, a: ['fprintf'],
+  h: 'C\'est printf avec une lettre de plus devant.', e: '`fprintf` marche comme `printf`, avec le fichier en premier argument.' },
+{ i: 'file6', n: 'file', l: 2, t: 'trou', q: 'Complète la boucle qui lit des lignes de la forme `Premier 1`.', c: R`while(fscanf(f, "%63s %d", nom, &numero) == ___) {
+  ...
+}`, a: ['2'],
+  h: 'fscanf renvoie le nombre de valeurs lues.', e: 'On attend 2 valeurs : un nom et un numéro. À la fin du fichier, `fscanf` renvoie moins de 2 et la boucle s\'arrête.' },
+{ i: 'file7', n: 'file', l: 2, t: 'bug', q: 'Clique sur la ligne fausse.', c: [R`const char * chemin = "test.txt";`, R`FILE * f = fopen(chemin, "w");`, R`fprintf(f, "Bonjour\n");`, 'fclose(chemin);'], a: 3,
+  h: 'Que doit recevoir fclose ?', e: '`fclose` attend le `FILE *` : `fclose(f)`. `chemin` n\'est que le nom du fichier.' },
+{ i: 'file8', n: 'file', l: 2, t: 'qcm', q: 'Quel mode écrit à la suite du fichier, sans rien effacer ?', o: ['"r"', '"w"', '"a"'], a: 2,
+  h: 'Ajouter se dit to append.', e: '`"a"` comme append : l\'écriture se fait à la fin du fichier.' },
+{ i: 'file9', n: 'file', l: 3, t: 'qcm', q: 'Quel couple sert à écrire en binaire ?', o: ['fprintf et le mode "w"', 'fwrite et le mode "wb"', 'fputc et le mode "r"'], a: 1,
+  h: 'b comme binaire.', e: '`fwrite` écrit des blocs d\'octets. On ajoute `b` au mode pour préciser que le fichier est binaire.' },
+{ i: 'file10', n: 'file', l: 3, t: 'trou', q: 'Complète pour écrire un seul entier en binaire.', c: R`int n = 42;
+fwrite(&n, sizeof(int), ___, f);`, a: ['1'],
+  h: 'Arguments de fwrite : adresse, taille d\'un élément, nombre d\'éléments, fichier.', e: 'Le 3e argument est le nombre d\'éléments à écrire : ici, 1.' },
+{ i: 'file11', n: 'file', l: 3, t: 'ordre', q: 'Remets dans l\'ordre pour afficher tout le contenu du fichier.', pre: 'int c;',
+  c: [R`FILE * f = fopen("message.txt", "r");`, 'while((c = fgetc(f)) != EOF) {', '  putchar(c);', '}', 'fclose(f);'],
+  h: 'On ouvre, on lit jusqu\'à la fin, on ferme.', e: '`fgetc` lit un caractère à la fois et renvoie `EOF` à la fin du fichier.' },
+{ i: 'file12', n: 'file', l: 3, t: 'qcm', q: 'Dans quel cas `fopen(chemin, "r")` renvoie-t-il `NULL` ?', o: ['Quand le fichier est vide', 'Quand le fichier n\'existe pas', 'Jamais'], a: 1,
+  h: 'En lecture, le fichier doit déjà être là.', e: 'En lecture, le fichier doit exister. Un fichier vide s\'ouvre sans problème.' },
+
+/* ---------- Structures ---------- */
+{ i: 'st1', n: 'st', l: 1, t: 'qcm', q: '`perso` est une variable de type `Stats`. Comment lit-on son champ `vie` ?', o: ['perso.vie', 'perso->vie', 'perso[vie]'], a: 0,
+  h: 'Avec une variable, on utilise un seul caractère.', e: 'Avec une variable, on utilise le point : `perso.vie`.' },
+{ i: 'st2', n: 'st', l: 1, t: 'qcm', q: '`perso` est un pointeur de type `Stats *`. Comment lit-on son champ `vie` ?', o: ['perso.vie', 'perso->vie', '*perso.vie'], a: 1,
+  h: 'Avec un pointeur, on utilise une flèche.', e: 'Avec un pointeur, on utilise la flèche : `perso->vie`.' },
+{ i: 'st3', n: 'st', l: 1, t: 'trou', q: 'Complète la définition de la structure.', c: R`typedef struct Stats Stats;
+___ Stats {
+  int vie;
+  int attaque;
+};`, a: ['struct'],
+  h: 'C\'est le mot-clé qui apparaît déjà dans le typedef.', e: 'On définit la structure avec le mot-clé `struct`. Le `typedef` crée seulement un raccourci.' },
+{ i: 'st4', n: 'st', l: 1, t: 'qcm', q: 'À quoi sert `typedef struct Stats Stats;` ?', o: ['À allouer une structure', 'À écrire Stats au lieu de struct Stats', 'À créer une variable'], a: 1,
+  h: 'typedef crée un synonyme.', e: '`typedef` crée un synonyme de type, plus court à écrire.' },
+{ i: 'st5', n: 'st', l: 2, t: 'trou', q: 'Complète avec le bon opérateur.', c: R`Stats perso;
+Stats * p = &perso;
+p___vie = 100;`, a: ['->'],
+  h: 'p est un pointeur.', e: '`p` est un pointeur, donc on utilise la flèche : `p->vie`.' },
+{ i: 'st6', n: 'st', l: 2, t: 'qcm', q: 'À quoi équivaut `(*p).vie` ?', o: ['p.vie', 'p->vie', '&p.vie'], a: 1,
+  h: 'La flèche est un raccourci.', e: 'La flèche est le raccourci de « étoile puis point » : `p->vie`.' },
+{ i: 'st7', n: 'st', l: 2, t: 'bug', q: 'Clique sur la ligne qui fait planter le programme.', c: ['typedef struct Point Point;', 'struct Point { int x; int y; };', 'Point * p = NULL;', 'p->x = 3;'], a: 3,
+  h: 'Sur quoi pointe p ?', e: '`p` vaut `NULL` : il n\'y a aucune structure derrière. Il faut d\'abord allouer avec `malloc`.' },
+{ i: 'st8', n: 'st', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`void soigner(Stats s) {
+  s.vie = 100;
+}
+
+int main() {
+  Stats p;
+  p.vie = 10;
+  soigner(p);
+  printf("%d\n", p.vie);
+}`, o: ['10', '100', '0'], a: 0,
+  h: 'La fonction reçoit-elle p ou une copie ?', e: 'La fonction reçoit une copie de `p`. Elle modifie la copie, et l\'original garde 10.', out: '10' },
+{ i: 'st9', n: 'st', l: 3, t: 'trou', q: 'Complète la version qui modifie vraiment le personnage.', c: R`void soigner(Stats * s) {
+  ___ = 100;
+}`, a: ['s->vie', '(*s).vie'],
+  h: 's est un pointeur sur la structure.', e: 'Avec un pointeur, on écrit `s->vie = 100;`. Cette fois, l\'original est modifié.' },
+{ i: 'st10', n: 'st', l: 3, t: 'ordre', q: 'Reconstitue le corps d\'une fonction qui alloue une structure `Stats` et la renvoie.',
+  c: ['Stats * s = NULL;', 'if((s = (Stats *)malloc(sizeof(Stats))) == NULL) {', '  return NULL;', '}', 's->vie = 100;', 'return s;'],
+  h: 'On vérifie l\'allocation avant de remplir.', e: 'On alloue en vérifiant, on remplit les champs avec la flèche, puis on renvoie le pointeur.' },
+{ i: 'st11', n: 'st', l: 3, t: 'qcm', q: 'Que vaut `C` ?', c: R`typedef enum { A, B, C } Lettre;`, o: ['1', '2', '3'], a: 1,
+  h: 'La numérotation commence à 0.', e: 'Une énumération commence à 0 : A vaut 0, B vaut 1, C vaut 2.' },
+{ i: 'st12', n: 'st', l: 3, t: 'qcm', q: 'Quelle est la particularité d\'une `union` ?', o: ['Ses champs partagent la même zone de mémoire', 'Elle ne peut contenir que des entiers', 'Elle se libère toute seule'], a: 0,
+  h: 'Sa taille est celle de son plus grand champ.', e: 'Dans une `union`, tous les champs occupent le même emplacement : modifier l\'un modifie les autres.' },
+
+/* ---------- Modules ---------- */
+{ i: 'mod1', n: 'mod', l: 1, t: 'qcm', q: 'Que met-on dans un fichier `.h` ?', o: ['Le code des fonctions', 'Les déclarations des fonctions', 'Le programme compilé'], a: 1,
+  h: 'h comme header, l\'en-tête.', e: 'Le `.h` contient les déclarations (les prototypes). Le code est dans le `.c`.' },
+{ i: 'mod2', n: 'mod', l: 1, t: 'qcm', q: 'Quelle écriture inclut un fichier de ton propre projet ?', o: ['#include <outils.h>', '#include "outils.h"', '#import outils.h'], a: 1,
+  h: 'Les chevrons sont réservés aux bibliothèques du système.', e: 'Les guillemets cherchent dans le dossier du projet. Les chevrons servent aux bibliothèques comme `stdio.h`.' },
+{ i: 'mod3', n: 'mod', l: 1, t: 'qcm', q: 'Que fait `#define TAILLE 10` ?', o: ['Il crée une variable', 'Il remplace TAILLE par 10 avant la compilation', 'Il alloue 10 cases'], a: 1,
+  h: 'C\'est le préprocesseur qui travaille, avant le compilateur.', e: 'Le préprocesseur remplace le mot `TAILLE` par `10` partout dans le code, comme un chercher-remplacer.' },
+{ i: 'mod4', n: 'mod', l: 1, t: 'trou', q: 'Complète la commande pour compiler `main.c` avec `outils.c`.', c: R`gcc -o prog main.c ___`, a: ['outils.c'],
+  h: 'Il faut donner tous les fichiers source.', e: 'On donne tous les fichiers `.c` à gcc : `gcc -o prog main.c outils.c`.' },
+{ i: 'mod5', n: 'mod', l: 2, t: 'trou', q: 'Complète la protection contre les inclusions multiples.', c: R`#ifndef OUTILS_H
+#___ OUTILS_H
+
+int addition(int a, int b);
+
+#endif`, a: ['define'],
+  h: 'Si le nom n\'est pas défini, on le définit.', e: 'Si `OUTILS_H` n\'est pas encore défini, on le définit. À la 2e inclusion, le contenu est sauté.' },
+{ i: 'mod6', n: 'mod', l: 2, t: 'qcm', q: 'Que produit la commande `gcc -c main.c` ?', o: ['Un programme prêt à lancer', 'Le fichier objet main.o', 'Rien du tout'], a: 1,
+  h: 'L\'option -c compile sans assembler le programme final.', e: '`-c` compile sans faire l\'édition de liens : on obtient `main.o`, à assembler ensuite avec les autres.' },
+{ i: 'mod7', n: 'mod', l: 2, t: 'qcm', q: 'Quel est l\'intérêt principal d\'un Makefile ?', o: ['Rendre le programme plus rapide', 'Ne recompiler que ce qui a changé', 'Corriger les erreurs du code'], a: 1,
+  h: 'Pense à un gros projet de 50 fichiers.', e: '`make` compare les dates des fichiers et ne recompile que ceux qui ont été modifiés.' },
+{ i: 'mod8', n: 'mod', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`#define CARRE(x) x * x
+
+printf("%d\n", CARRE(1 + 2));`, o: ['9', '5', '6'], a: 1,
+  h: 'Remplace x par 1 + 2 mot pour mot, sans ajouter de parenthèses.', e: 'Le remplacement donne `1 + 2 * 1 + 2`. La multiplication passe en premier : 1 + 2 + 2 = 5.', out: '5' },
+{ i: 'mod9', n: 'mod', l: 3, t: 'qcm', q: 'Quelle macro calcule correctement le carré ?', o: ['#define CARRE(x) x * x', '#define CARRE(x) ((x) * (x))', '#define CARRE(x) (x * x)'], a: 1,
+  h: 'Il faut protéger chaque x, et aussi le résultat.', e: 'On met des parenthèses autour de chaque `x` et autour du tout, pour que le remplacement reste correct.' },
+{ i: 'mod10', n: 'mod', l: 3, t: 'ordre', q: 'Reconstitue un fichier d\'en-tête complet.',
+  c: ['#ifndef OUTILS_H', '#define OUTILS_H', 'int addition(int a, int b);', '#endif'],
+  h: 'La protection entoure tout le contenu.', e: 'La protection encadre les déclarations : `#ifndef`, `#define`, le contenu, puis `#endif`.' },
+{ i: 'mod11', n: 'mod', l: 3, t: 'qcm', q: 'Quand le code placé entre `#ifdef DEBUG` et `#endif` est-il compilé ?', o: ['Toujours', 'Seulement si DEBUG est défini', 'Jamais'], a: 1,
+  h: 'ifdef veut dire « si défini ».', e: 'Ce code n\'existe dans le programme que si `DEBUG` a été défini, par exemple avec `#define DEBUG`.' },
+{ i: 'mod12', n: 'mod', l: 3, t: 'qcm', q: 'Pourquoi sépare-t-on le code en plusieurs fichiers `.c` ?', o: ['Pour que le programme tourne plus vite', 'Pour organiser le code et le réutiliser', 'Parce qu\'un fichier est limité à 100 lignes'], a: 1,
+  h: 'Pense à un projet fait à plusieurs.', e: 'Les modules rendent le code plus lisible, réutilisable, et plus rapide à recompiler.' },
+
+/* ---------- Genericite ---------- */
+{ i: 'gen1', n: 'gen', l: 1, t: 'qcm', q: 'Que contient un pointeur de fonction ?', o: ['Le résultat de la fonction', 'L\'adresse de la fonction', 'Le nom de la fonction'], a: 1,
+  h: 'Un pointeur contient toujours la même sorte de chose.', e: 'Comme tout pointeur, il contient une adresse : celle du code de la fonction.' },
+{ i: 'gen2', n: 'gen', l: 1, t: 'qcm', q: 'Qu\'est-ce qu\'un `void *` ?', o: ['Un pointeur qui ne pointe sur rien', 'Un pointeur sur n\'importe quel type', 'Une fonction sans retour'], a: 1,
+  h: 'C\'est le type que renvoie malloc.', e: '`void *` est un pointeur générique. `malloc` en renvoie un, c\'est pour ça qu\'on le convertit.' },
+{ i: 'gen3', n: 'gen', l: 1, t: 'qcm', q: 'Comment `qsort` peut-il trier des tableaux de n\'importe quel type ?', o: ['Il devine le type tout seul', 'On lui donne une fonction de comparaison', 'Il ne trie que des entiers'], a: 1,
+  h: 'Tu lui passes une fonction en paramètre.', e: '`qsort` ne connaît pas le type. C\'est ta fonction de comparaison qui lui dit dans quel ordre ranger deux éléments.' },
+{ i: 'gen4', n: 'gen', l: 2, t: 'trou', q: 'Complète pour appeler la fonction à travers le pointeur.', c: R`int addition(int a, int b) { return a + b; }
+
+int (*operation)(int, int) = addition;
+int r = ___(2, 3);`, a: ['operation', '(*operation)'],
+  h: 'Un pointeur de fonction s\'appelle comme une fonction.', e: 'On appelle le pointeur comme une fonction : `operation(2, 3)` exécute `addition`.' },
+{ i: 'gen5', n: 'gen', l: 2, t: 'qcm', q: 'Quelle ligne déclare un pointeur vers une fonction qui prend deux `int` et renvoie un `int` ?', o: ['int *f(int, int);', 'int (*f)(int, int);', 'int f*(int, int);'], a: 1,
+  h: 'Les parenthèses autour de *f sont indispensables.', e: 'Sans les parenthèses, `int *f(int, int)` déclare une fonction qui renvoie un `int *`.' },
+{ i: 'gen6', n: 'gen', l: 2, t: 'trou', q: 'Complète le cast pour lire un entier derrière le pointeur générique.', c: R`int comparer(const void * a, const void * b) {
+  int x = *(___)a;
+  ...
+}`, a: ['int *', 'const int *'],
+  h: 'On veut un pointeur sur un entier.', e: 'On convertit le `void *` en `int *`, puis l\'étoile lit l\'entier.' },
+{ i: 'gen7', n: 'gen', l: 2, t: 'qcm', q: 'Pourquoi ne peut-on pas écrire `*p` directement quand `p` est un `void *` ?', o: ['Parce que p vaut toujours NULL', 'Parce que le C ne connaît pas la taille de la case', 'Parce que c\'est interdit dans une fonction'], a: 1,
+  h: 'Combien d\'octets faudrait-il lire ?', e: 'Sans le type, le C ne sait pas combien d\'octets lire. On convertit d\'abord le pointeur.' },
+{ i: 'gen8', n: 'gen', l: 3, t: 'ordre', q: 'Remets dans l\'ordre pour trier le tableau puis l\'afficher.', pre: 'int comparer(const void * a, const void * b);',
+  c: ['int t[] = {3, 1, 2};', 'qsort(t, 3, sizeof(int), comparer);', R`printf("%d %d %d\n", t[0], t[1], t[2]);`],
+  h: 'On crée, on trie, on affiche.', e: '`qsort` reçoit le tableau, le nombre de cases, la taille d\'une case et la fonction de comparaison.' },
+{ i: 'gen9', n: 'gen', l: 3, t: 'trou', q: 'Complète l\'appel pour trier un tableau de 3 entiers.', c: R`int t[] = {3, 1, 2};
+qsort(t, 3, ___, comparer);`, a: ['sizeof(int)'],
+  h: 'Le 3e argument est la taille d\'une case.', e: 'Le 3e argument est la taille d\'une case : `sizeof(int)`.' },
+{ i: 'gen10', n: 'gen', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int comparer(const void * a, const void * b) {
+  return *(const int *)a - *(const int *)b;
+}
+
+int t[] = {3, 1, 2};
+qsort(t, 3, sizeof(int), comparer);
+printf("%d %d %d\n", t[0], t[1], t[2]);`, o: ['3 1 2', '1 2 3', '3 2 1'], a: 1,
+  h: 'a - b est négatif quand a est plus petit que b.', e: '`a - b` négatif place `a` avant `b` : le tri est croissant.', out: '1 2 3' },
+{ i: 'gen11', n: 'gen', l: 3, t: 'qcm', q: 'Laquelle de ces fonctions accepte un nombre variable d\'arguments ?', o: ['strlen', 'printf', 'free'], a: 1,
+  h: 'Tu lui passes tantôt 1 argument, tantôt 5.', e: '`printf` est une fonction variadique : elle prend un format, puis autant de valeurs que nécessaire.' },
+{ i: 'gen12', n: 'gen', l: 3, t: 'qcm', q: 'Que permet cette ligne ?', c: R`typedef int (*Operation)(int, int);`, o: ['Elle appelle une fonction', 'Elle crée un nom de type pour ce genre de pointeur de fonction', 'Elle déclare une variable Operation'], a: 1,
+  h: 'typedef crée toujours un synonyme de type.', e: 'On peut ensuite écrire `Operation op = addition;`, ce qui est bien plus lisible.' },
+
+/* ---------- Questions supplementaires ---------- */
+{ i: 'ops12', n: 'ops', l: 1, t: 'qcm', q: 'Quel format affiche un seul caractère ?', o: ['%s', '%c', '%d'], a: 1,
+  h: 'c comme caractère.', e: '`%c` affiche un caractère, `%s` une chaîne entière.' },
+{ i: 'ops16', n: 'ops', l: 1, t: 'trou', q: 'Complète le format pour lire un caractère.', c: R`char c;
+scanf(" ___", &c);`, a: ['%c'],
+  h: 'C\'est le même format que pour l\'afficher.', e: '`%c` lit un caractère. L\'espace placé avant saute les retours à la ligne restés dans la saisie.' },
+{ i: 'ops13', n: 'ops', l: 2, t: 'bug', q: 'Ce programme affiche « cinq » même quand `n` ne vaut pas 5. Clique sur la ligne fautive.', c: ['int n = 3;', 'if(n == 5);', '{', R`  printf("cinq\n");`, '}'], a: 1,
+  h: 'Regarde la fin de chaque ligne.', e: 'Le point-virgule après le `if` termine le test tout de suite. Le bloc qui suit s\'exécute donc toujours.' },
+{ i: 'ops14', n: 'ops', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int i;
+for(i = 0; i < 3; i++) {
+  printf("%d ", i);
+}`, o: ['0 1 2', '1 2 3', '0 1 2 3'], a: 0,
+  h: 'La boucle commence à 0 et s\'arrête avant 3.', e: '`i` vaut 0, 1 puis 2. Quand `i` atteint 3, le test `i < 3` est faux et la boucle s\'arrête.', out: '0 1 2' },
+{ i: 'ops15', n: 'ops', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int n = 5;
+printf("%d\n", n++);`, o: ['4', '5', '6'], a: 1,
+  h: 'Le ++ est placé après la variable.', e: '`n++` donne d\'abord l\'ancienne valeur (5), puis ajoute 1. Après cette ligne, `n` vaut 6.', out: '5' },
+{ i: 'ops17', n: 'ops', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int a = 5, b = 2;
+printf("%g\n", (float)a / b);`, o: ['2', '2.5', '3'], a: 1,
+  h: 'Le cast transforme a en nombre à virgule avant la division.', e: 'Le `(float)` convertit `a` avant la division, qui n\'est donc plus entière : 2.5.', out: '2.5' },
+
+{ i: 'str13', n: 'str', l: 1, t: 'qcm', q: 'Quelle est la différence entre `\'a\'` et `"a"` ?', o: ['Aucune', '\'a\' est un caractère, "a" est une chaîne de 2 cases', '"a" est un caractère, \'a\' est une chaîne'], a: 1,
+  h: 'Les guillemets doubles ajoutent quelque chose à la fin.', e: R`Les apostrophes donnent un seul caractère. Les guillemets donnent une chaîne : la lettre, puis le '\0'.` },
+{ i: 'str14', n: 'str', l: 1, t: 'trou', q: 'Complète pour afficher la lettre C.', c: R`char mot[] = "Chat";
+printf("%c\n", mot[___]);`, a: ['0'],
+  h: 'Les cases d\'un tableau sont numérotées à partir de zéro.', e: 'La première case d\'un tableau porte le numéro 0.', out: 'C' },
+{ i: 'str15', n: 'str', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`char mot[] = "Chat";
+mot[2] = '\0';
+printf("%s\n", mot);`, o: ['Chat', 'Ch', 'Cht'], a: 1,
+  h: 'On vient de poser un panneau STOP au milieu.', e: R`Le '\0' placé en case 2 coupe la chaîne : %s s'arrête là et affiche "Ch". C'est ainsi que strtok découpe.`, out: 'Ch' },
+{ i: 'str16', n: 'str', l: 2, t: 'qcm', q: 'Que faut-il faire après `char * c = strdup(s);` quand on n\'a plus besoin de `c` ?', o: ['Rien', 'free(c);', 'fclose(c);'], a: 1,
+  h: 'strdup utilise malloc en interne.', e: '`strdup` alloue la copie avec `malloc`. C\'est donc à toi de la libérer avec `free`.' },
+{ i: 'str17', n: 'str', l: 3, t: 'bug', q: 'Cette copie déborde d\'une case. Clique sur la ligne fautive.', c: ['char * copie = (char *)malloc(strlen(src));', 'strcpy(copie, src);', 'return copie;'], a: 0,
+  h: 'Combien de cases faut-il pour stocker "Chat" ?', e: R`Il manque le + 1 pour le '\0' : il faut malloc(strlen(src) + 1).` },
+{ i: 'str18', n: 'str', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`printf("%d\n", (int)strlen("a b"));`, o: ['2', '3', '4'], a: 1,
+  h: 'L\'espace est un caractère comme un autre.', e: 'L\'espace compte : \'a\', l\'espace et \'b\' font 3 caractères.', out: '3' },
+
+{ i: 'ptr13', n: 'ptr', l: 1, t: 'qcm', q: 'Quelle valeur donne-t-on à un pointeur qui ne pointe sur rien ?', o: ['0x20', 'NULL', 'void'], a: 1,
+  h: 'C\'est aussi ce que renvoie malloc en cas d\'échec.', e: '`NULL` signifie « aucune adresse ». On initialise souvent les pointeurs avec.' },
+{ i: 'ptr14', n: 'ptr', l: 1, t: 'qcm', q: 'Que déclare `int * p;` ?', o: ['Un entier nommé p', 'Un pointeur sur un entier', 'Une multiplication'], a: 1,
+  h: 'L\'étoile dans une déclaration fait partie du type.', e: 'Dans une déclaration, l\'étoile signifie « pointeur sur ». `p` contiendra l\'adresse d\'un `int`.' },
+{ i: 'ptr15', n: 'ptr', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int a = 3;
+int * p = &a;
+int * q = p;
+*q = 7;
+printf("%d\n", a);`, o: ['3', '7', 'Une adresse'], a: 1,
+  h: 'p et q contiennent la même adresse.', e: '`q` reçoit la même adresse que `p` : les deux pointent sur `a`. Écrire dans `*q` modifie donc `a`.', out: '7' },
+{ i: 'ptr16', n: 'ptr', l: 2, t: 'trou', q: 'Complète pour afficher 9 en passant par le pointeur.', c: R`int a = 9;
+int * p = &a;
+printf("%d\n", ___);`, a: ['*p'],
+  h: 'On veut le contenu de la case, pas son adresse.', e: '`*p` lit la case pointée. `p` tout seul afficherait l\'adresse.', out: '9' },
+{ i: 'ptr17', n: 'ptr', l: 3, t: 'qcm', q: 'Une fonction reçoit `char *** grid`. Comment écrit-elle la case de la ligne `y` et de la colonne `x` ?', o: ['grid[y][x]', '(*grid)[y][x]', '*grid[y][x]'], a: 1,
+  h: 'Il faut d\'abord revenir à la grille, avec des parenthèses.', e: '`grid` est l\'adresse de la grille. `(*grid)` est la grille, et les parenthèses sont obligatoires.' },
+{ i: 'ptr18', n: 'ptr', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`char texte[] = "abc";
+char * p = texte;
+p += 2;
+printf("%c\n", *p);`, o: ['a', 'b', 'c'], a: 2,
+  h: 'p avance de deux cases.', e: '`p` part de la case 0 et avance de 2 cases : il pointe sur \'c\'.', out: 'c' },
+
+{ i: 'mem13', n: 'mem', l: 1, t: 'qcm', q: 'Dans quelle zone de la mémoire `malloc` réserve-t-il la place ?', o: ['La pile', 'Le tas', 'Le fichier source'], a: 1,
+  h: 'Les variables locales, elles, vont dans la pile.', e: 'L\'allocation dynamique se fait dans le tas. Les variables locales sont dans la pile.' },
+{ i: 'mem15', n: 'mem', l: 1, t: 'trou', q: 'Complète pour allouer `n` cases mises à 0.', c: R`double * t = (double *)___(n, sizeof(double));`, a: ['calloc'],
+  h: 'Cette fonction prend deux arguments.', e: '`calloc(nombre, taille)` alloue et met toutes les cases à 0.' },
+{ i: 'mem14', n: 'mem', l: 2, t: 'bug', q: 'Clique sur la ligne qui provoque une fuite de mémoire.', c: ['int * t = (int *)malloc(5 * sizeof(int));', 't[0] = 1;', 't = NULL;'], a: 2,
+  h: 'Après cette ligne, plus personne ne connaît l\'adresse de la zone.', e: 'On efface l\'adresse sans avoir appelé `free` : la zone reste réservée et devient inaccessible.' },
+{ i: 'mem16', n: 'mem', l: 2, t: 'qcm', q: 'Que fait `realloc(NULL, 10 * sizeof(int))` ?', o: ['Il plante', 'Il se comporte comme malloc', 'Il libère la mémoire'], a: 1,
+  h: 'C\'est ce qui permet de partir d\'une liste vide.', e: 'Avec `NULL`, `realloc` alloue une nouvelle zone, comme `malloc`. On peut donc démarrer avec une liste à `NULL`.' },
+{ i: 'mem17', n: 'mem', l: 3, t: 'trou', q: 'Complète pour allouer le tableau des lignes d\'une grille.', c: R`char ** grid = (char **)malloc(height * ___);`, a: ['sizeof(char *)'],
+  h: 'Chaque case contient une ligne.', e: 'Chaque case contient une ligne, donc un `char *`.' },
+{ i: 'mem18', n: 'mem', l: 3, t: 'qcm', q: 'Que se passe-t-il si on appelle `free` deux fois sur le même pointeur ?', o: ['Rien, c\'est sans danger', 'C\'est une erreur qui peut faire planter le programme', 'La mémoire est libérée deux fois plus vite'], a: 1,
+  h: 'C\'est pour ça qu\'on remet le pointeur à NULL après free.', e: 'Libérer deux fois la même zone est une erreur. Remettre le pointeur à `NULL` après `free` évite ce piège.' },
+
+{ i: 'file13', n: 'file', l: 1, t: 'qcm', q: 'Quel est le type d\'une variable qui représente un fichier ouvert ?', o: ['char *', 'FILE *', 'int'], a: 1,
+  h: 'C\'est ce que renvoie fopen.', e: '`fopen` renvoie un `FILE *`, qu\'on passe ensuite à toutes les autres fonctions.' },
+{ i: 'file14', n: 'file', l: 1, t: 'qcm', q: 'Que renvoie `fgetc` quand il n\'y a plus rien à lire ?', o: ['NULL', 'EOF', R`'\0'`], a: 1,
+  h: 'End Of File.', e: '`EOF` signifie End Of File, la fin du fichier.' },
+{ i: 'file15', n: 'file', l: 2, t: 'qcm', q: 'Le fichier contient `12 abc`. Qu\'affiche ce programme ?', c: R`int n;
+fscanf(f, "%d", &n);
+printf("%d\n", n + 1);`, o: ['12', '13', 'abc'], a: 1,
+  h: 'fscanf lit le premier nombre du fichier.', e: '`fscanf` lit 12 dans `n`, puis on affiche `n + 1`.', out: '13' },
+{ i: 'file16', n: 'file', l: 2, t: 'trou', q: 'Complète le test qui détecte un fichier impossible à ouvrir.', c: R`if((f = fopen(chemin, "r")) == ___) {
+  printf("Erreur d'ouverture.\n");
+}`, a: ['NULL'],
+  h: 'C\'est la même valeur que pour un malloc raté.', e: '`fopen` renvoie `NULL` en cas d\'échec, comme `malloc`.' },
+{ i: 'file17', n: 'file', l: 3, t: 'trou', q: 'Complète le mode pour lire un fichier binaire.', c: R`FILE * f = fopen("data.bin", "___");`, a: ['rb'],
+  h: 'Lecture, plus la lettre du binaire.', e: '`r` pour la lecture, `b` pour le binaire.' },
+{ i: 'file18', n: 'file', l: 3, t: 'qcm', q: 'À quoi sert `stderr` ?', o: ['À lire le clavier', 'À afficher les messages d\'erreur', 'À stocker un fichier temporaire'], a: 1,
+  h: 'err comme erreur.', e: '`stderr` est la sortie réservée aux erreurs : `fprintf(stderr, "...")`.' },
+
+{ i: 'st13', n: 'st', l: 1, t: 'trou', q: 'Complète avec le bon opérateur.', c: R`Stats perso;
+perso___vie = 100;`, a: ['.'],
+  h: 'perso est une variable, pas un pointeur.', e: '`perso` est une variable, donc on utilise le point.' },
+{ i: 'st18', n: 'st', l: 1, t: 'qcm', q: 'Quel mot-clé sert à donner des noms à des constantes entières ?', o: ['struct', 'enum', 'union'], a: 1,
+  h: 'Pense à une énumération.', e: '`enum` crée une énumération : une liste de noms qui valent 0, 1, 2, et ainsi de suite.' },
+{ i: 'st14', n: 'st', l: 2, t: 'qcm', q: '`liste` est un `Contact *`. Comment lit-on le numéro du 3e contact ?', o: ['liste[2].numero', 'liste.numero[2]', 'liste[3].numero'], a: 0,
+  h: 'On choisit d\'abord la case, puis le champ.', e: 'On choisit la case avec `[2]` (la 3e, car on compte à partir de 0), puis le champ avec le point.' },
+{ i: 'st15', n: 'st', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`Point a = {1, 2};
+Point b = a;
+b.x = 9;
+printf("%d\n", a.x);`, o: ['1', '9', '2'], a: 0,
+  h: 'b est-il le même objet que a ?', e: '`b = a` copie tous les champs. Modifier `b` ne change pas `a`.', out: '1' },
+{ i: 'st16', n: 'st', l: 3, t: 'qcm', q: 'Que vaut `sizeof(Stats)` si la structure contient 4 `int` de 4 octets ?', o: ['4', '8', '16'], a: 2,
+  h: 'Une structure contient tous ses champs à la suite.', e: 'Les 4 champs se suivent en mémoire : 4 × 4 = 16 octets.' },
+{ i: 'st17', n: 'st', l: 3, t: 'bug', q: 'Cette fonction libère dans le mauvais ordre. Clique sur la ligne placée trop tôt.', c: ['void Liste_free(Liste ** liste) {', '  free(*liste);', '  free((*liste)->elements);', '  *liste = NULL;', '}'], a: 1,
+  h: 'Peut-on lire un champ d\'une structure déjà libérée ?', e: 'Il faut libérer `elements` avant la structure. Une fois la structure libérée, on n\'a plus le droit de lire ses champs.' },
+
+{ i: 'mod13', n: 'mod', l: 1, t: 'qcm', q: 'Que permet `#include <stdio.h>` ?', o: ['D\'utiliser printf et scanf', 'D\'utiliser malloc et free', 'D\'utiliser strlen'], a: 0,
+  h: 'io comme input et output.', e: '`stdio.h` déclare les entrées et sorties : `printf`, `scanf`, `fopen`. `malloc` est dans `stdlib.h`, `strlen` dans `string.h`.' },
+{ i: 'mod18', n: 'mod', l: 1, t: 'qcm', q: 'Qui traite les lignes qui commencent par `#` ?', o: ['Le préprocesseur', 'Le processeur', 'Le terminal'], a: 0,
+  h: 'Il passe avant le compilateur.', e: 'Le préprocesseur traite `#include` et `#define` avant que le compilateur ne lise le code.' },
+{ i: 'mod14', n: 'mod', l: 2, t: 'qcm', q: 'Où écrit-on le corps de la fonction `addition` ?', c: R`int addition(int a, int b) {
+  return a + b;
+}`, o: ['Dans outils.h', 'Dans outils.c', 'Dans le Makefile'], a: 1,
+  h: 'Le .h ne contient que la ligne du prototype.', e: 'Le code va dans le `.c`. Le `.h` ne contient que `int addition(int a, int b);`.' },
+{ i: 'mod15', n: 'mod', l: 2, t: 'trou', q: 'Après `gcc -c main.c` et `gcc -c outils.c`, complète la commande qui assemble le programme.', c: R`gcc -o prog main.o ___`, a: ['outils.o'],
+  h: 'On assemble les fichiers objets.', e: 'On assemble tous les fichiers objets : `main.o` et `outils.o`.' },
+{ i: 'mod16', n: 'mod', l: 3, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`#define N 3
+
+int t[N];
+printf("%d\n", (int)(sizeof(t) / sizeof(int)));`, o: ['3', '12', '4'], a: 0,
+  h: 'On divise la taille totale par la taille d\'une case.', e: 'Le tableau fait 3 × 4 = 12 octets. Divisé par la taille d\'un `int` (4), on retrouve 3 cases.', out: '3' },
+{ i: 'mod17', n: 'mod', l: 3, t: 'qcm', q: 'À quoi sert l\'option `-Wall` de gcc ?', o: ['À compiler plus vite', 'À afficher les avertissements', 'À créer une bibliothèque'], a: 1,
+  h: 'W comme warning.', e: '`-Wall` active les avertissements, qui signalent souvent de vrais bugs.' },
+
+{ i: 'gen13', n: 'gen', l: 1, t: 'qcm', q: 'Quel type renvoie `malloc` ?', o: ['int *', 'void *', 'char'], a: 1,
+  h: 'malloc ne sait pas ce que tu vas ranger dans la zone.', e: '`malloc` renvoie un `void *`, car il ne connaît pas le type des cases. C\'est toi qui le convertis.' },
+{ i: 'gen18', n: 'gen', l: 1, t: 'qcm', q: 'Quel est l\'intérêt d\'un code générique ?', o: ['Il s\'exécute toujours plus vite', 'Une seule fonction sert pour plusieurs types', 'Il n\'a pas besoin d\'être compilé'], a: 1,
+  h: 'Pense à qsort.', e: 'On écrit la fonction une seule fois, et elle marche pour des entiers, des chaînes ou des structures.' },
+{ i: 'gen14', n: 'gen', l: 2, t: 'qcm', q: 'Qu\'affiche ce programme ?', c: R`int doubler(int x) { return 2 * x; }
+
+int appliquer(int (*f)(int), int v) {
+  return f(v);
+}
+
+printf("%d\n", appliquer(doubler, 4));`, o: ['4', '8', '16'], a: 1,
+  h: 'f pointe sur doubler.', e: '`appliquer` reçoit `doubler` et l\'appelle avec 4 : 2 × 4 = 8.', out: '8' },
+{ i: 'gen15', n: 'gen', l: 2, t: 'qcm', q: 'Comment passe-t-on la fonction `doubler` en paramètre ?', o: ['appliquer(doubler, 4)', 'appliquer(doubler(), 4)', 'appliquer(&doubler(4))'], a: 0,
+  h: 'Avec des parenthèses, on appelle la fonction.', e: 'Le nom seul, sans parenthèses, donne l\'adresse de la fonction. Avec `()`, on l\'appellerait tout de suite.' },
+{ i: 'gen16', n: 'gen', l: 3, t: 'qcm', q: 'Quelle ligne de la fonction de comparaison donne un tri décroissant ?', o: ['return *(const int *)a - *(const int *)b;', 'return *(const int *)b - *(const int *)a;', 'return 0;'], a: 1,
+  h: 'Il suffit d\'inverser les deux valeurs.', e: 'En inversant `a` et `b`, les plus grands passent devant.' },
+{ i: 'gen17', n: 'gen', l: 3, t: 'trou', q: 'Complète l\'appel pour trier un tableau de 5 entiers.', c: R`int t[5];
+qsort(t, ___, sizeof(int), comparer);`, a: ['5'],
+  h: 'Le 2e argument est le nombre de cases.', e: 'Le 2e argument est le nombre de cases du tableau : 5.' }
+];
+
+const ADVICE = [
+  'Essaie de répondre de tête avant de regarder les choix : chercher la réponse dans sa mémoire est ce qui la fixe le mieux.',
+  'Mieux vaut 15 minutes par jour qu\'une heure d\'un coup : les révisions espacées tiennent plus longtemps.',
+  'Après une erreur, lis l\'explication et redis-la avec tes mots. Une erreur corrigée se retient très bien.',
+  'Mélange les notions avec la Patrouille du jour : c\'est plus dur sur le moment, mais plus proche d\'un vrai contrôle.',
+  'Avant de valider, prédis ce que le code va afficher. Suivre un programme ligne par ligne est un vrai entraînement.',
+  'Quand une question te semble facile, réponds quand même : c\'est en la retrouvant sans aide que tu la consolides.'
+];
+const RANKS = [[0, 'Naufragé du vide'], [150, 'Cadet Hello World'], [400, 'Chasseur de bugs stellaires'], [800, 'Dompteur de pointeurs'], [1400, 'Amiral du malloc'], [2200, 'Légende du noyau']];
+const LVL = { 1: 'Mise en orbite', 2: 'Atterrissage', 3: 'Duel chronométré' };
+const WORLD = {
+  ops: ['Station Syntaxa', 'VEX-1', 'une IA douanière qui refuse le moindre signe égal en trop'],
+  str: ['Nébuleuse des Chaînes', 'S1LK', 'une IA tisseuse qui coupe tout ce qui n\'a pas de fin'],
+  ptr: ['Planète Pointara', 'ADR-0', 'une IA cartographe qui ne parle qu\'en adresses'],
+  mem: ['Astéroïde Malloc', 'HEAP-9', 'une IA minière qui réclame chaque octet emprunté'],
+  file: ['Archives de Fopen', 'SCRIB', 'une IA archiviste qui ferme tout ce qui reste ouvert'],
+  st: ['Cité Structura', 'ARKI', 'une IA architecte qui range tout dans des blocs'],
+  mod: ['Chantier Modulon', 'L1NK', 'une IA assembleuse qui relie les morceaux de vaisseau'],
+  gen: ['Portail Générika', 'VOID', 'une IA changeforme qui peut prendre n\'importe quel type']
+};
+const ZYX = '<svg viewBox="0 0 44 44" aria-hidden="true"><line x1="14" y1="9" x2="10" y2="2" stroke="var(--cell)" stroke-width="2"/><line x1="30" y1="9" x2="34" y2="2" stroke="var(--cell)" stroke-width="2"/><circle cx="10" cy="2" r="2" fill="var(--warn)"/><circle cx="34" cy="2" r="2" fill="var(--warn)"/><ellipse cx="22" cy="24" rx="18" ry="16" fill="var(--cell)"/><ellipse cx="14" cy="22" rx="5" ry="7" fill="var(--bg)"/><ellipse cx="30" cy="22" rx="5" ry="7" fill="var(--bg)"/><circle cx="15" cy="20" r="2" fill="var(--accent)"/><circle cx="31" cy="20" r="2" fill="var(--accent)"/><path d="M16 33 Q22 37 28 33" stroke="var(--bg)" stroke-width="2" fill="none"/></svg>';
+function say(who, html) { return '<div class="ia">' + ZYX + '<div><span class="tag">' + esc(who) + '</span><div class="bubble">' + html + '</div></div></div>'; }
+const DELAY = { 1: 20 * 60e3, 2: 24 * 3600e3, 3: 4 * 24 * 3600e3 };
+const KEY = 'segfault-academy-v1';
+
+let S = { xp: 0, q: {}, streak: 0, last: '' };
+try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(S, JSON.parse(raw)); } catch (e) {}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+const $ = id => document.getElementById(id);
+const app = $('app');
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function fmt(s) { return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>'); }
+function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function st(id) { return S.q[id] || { box: 0, due: 0, seen: 0 }; }
+function qs(n, l) { return Q.filter(q => q.n === n && (!l || q.l === l)); }
+function pct(list) { if (!list.length) return 0; return Math.round(100 * list.reduce((s, q) => s + st(q.i).box, 0) / (3 * list.length)); }
+function unlocked(n, l) { return l === 1 || qs(n, l - 1).every(q => st(q.i).box >= 1); }
+function rank() { let r = RANKS[0][1]; for (const [x, name] of RANKS) if (S.xp >= x) r = name; return r; }
+function nextRank() { for (const [x, name] of RANKS) if (S.xp < x) return [x, name]; return null; }
+function today() { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function dueList() { const now = Date.now(); return Q.filter(q => { const s = st(q.i); return s.seen && (s.box === 0 || (s.box < 3 && s.due <= now)); }); }
+
+function cells(p) {
+  const on = Math.round(p / 12.5);
+  let h = '<div class="cells" aria-hidden="true">';
+  for (let i = 0; i < 8; i++) h += '<i class="' + (i < on ? 'on' : '') + '"></i>';
+  return h + '</div><div class="addr" aria-hidden="true"><span>0x20</span><span>0x3c</span></div>';
+}
+
+
+
+let run = null, timer = null;
+function startRun(list, meta) {
+  run = { list, meta, k: 0, score: 0, combo: 0, best: 0, lives: 3, ok: 0, miss: [], hint: false, done: false };
+  showQ();
+}
+function mult() { return run.combo >= 5 ? 3 : run.combo >= 3 ? 2 : 1; }
+function showQ() {
+  clearInterval(timer);
+  const q = run.list[run.k];
+  run.hint = false; run.done = false; run.t0 = Date.now();
+  let h = scene(q) + (run.meta.timed ? '<div class="bar time"><i id="tb" style="width:100%"></i></div>' : '') +
+    '<section class="panel pop"><h2>' + fmt(q.q) + '</h2>';
+  if (q.pre) h += '<pre class="code">' + esc(q.pre) + '</pre>';
+  if (q.t === 'qcm') {
+    if (q.c) h += '<pre class="code">' + esc(q.c) + '</pre>';
+    h += '<div class="opts">' + shuffle(q.o.map((o, i) => i)).map(i => '<button class="opt" data-i="' + i + '">' + esc(q.o[i]) + '</button>').join('') + '</div>';
+  } else if (q.t === 'trou') {
+    h += '<pre class="code">' + esc(q.c) + '</pre><form class="row" id="f"><input class="ans" id="ans" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ce qui remplace ___" aria-label="Ta réponse"><button class="btn">Valider</button></form>';
+  } else if (q.t === 'bug') {
+    h += '<div class="opts" style="gap:4px">' + q.c.map((l, i) => '<button class="opt line" data-i="' + i + '">' + esc(l) + '</button>').join('') + '</div>';
+  } else {
+    h += '<p class="tag">Ton programme</p><div class="slot" id="slot"></div><p class="tag">Lignes disponibles</p><div class="opts" style="gap:4px" id="pool"></div>' +
+      '<div class="row"><button class="btn" id="val" disabled>Valider</button></div>';
+  }
+  h += '<div class="row"><button class="btn ghost hintb" id="hb" aria-label="Indice de ZYX, coûte 5 points">' + ZYX + '<span>Indice −5</span></button><button class="btn ghost" id="cp">Copier pour une IA</button></div><div id="hz"></div><div id="fb"></div></section>';
+  app.innerHTML = h;
+  $('quit').onclick = () => { clearInterval(timer); run.meta.back(); };
+  $('cp').onclick = () => copyAI(q, $('cp'));
+  $('hb').onclick = () => { if (run.hint || run.done) return; run.hint = true; run.score = Math.max(0, run.score - 5); $('hz').innerHTML = say('ZYX te souffle', '<p>' + fmt(q.h) + '</p>'); $('hb').disabled = true; };
+  if (q.t === 'qcm' || q.t === 'bug') {
+    app.querySelectorAll('.opt').forEach(b => b.onclick = () => {
+      if (run.done) return;
+      const i = +b.dataset.i;
+      app.querySelectorAll('.opt').forEach(x => { x.disabled = true; if (+x.dataset.i === q.a) x.classList.add('good'); });
+      if (i !== q.a) b.classList.add('bad');
+      answer(i === q.a);
+    });
+  } else if (q.t === 'trou') {
+    const norm = s => s.replace(/\s+/g, '').replace(/;$/, '');
+    $('ans').focus();
+    $('f').onsubmit = e => {
+      e.preventDefault();
+      if (run.done) return;
+      const v = norm($('ans').value);
+      if (!v) return;
+      $('ans').disabled = true;
+      answer(q.a.some(a => norm(a) === v), 'La réponse attendue : ' + q.a[0]);
+    };
+  } else {
+    let pool = shuffle(q.c.map((l, i) => i));
+    if (pool.every((v, i) => v === i) && pool.length > 1) pool.reverse();
+    let placed = [];
+    const draw = () => {
+      $('slot').innerHTML = placed.map(i => '<button class="opt line" data-p="' + i + '">' + esc(q.c[i]) + '</button>').join('') || '<span class="muted small">Vide pour l\'instant.</span>';
+      $('pool').innerHTML = pool.filter(i => !placed.includes(i)).map(i => '<button class="opt line" data-a="' + i + '">' + esc(q.c[i]) + '</button>').join('');
+      $('val').disabled = placed.length !== q.c.length;
+      app.querySelectorAll('[data-a]').forEach(b => b.onclick = () => { if (!run.done) { placed.push(+b.dataset.a); draw(); } });
+      app.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { if (!run.done) { placed = placed.filter(x => x !== +b.dataset.p); draw(); } });
+    };
+    draw();
+    $('val').onclick = () => {
+      if (run.done) return;
+      const good = placed.every((v, i) => q.c[v] === q.c[i]);
+      $('val').disabled = true;
+      answer(good, good ? '' : 'Le bon ordre :\n' + q.c.join('\n'));
+    };
+  }
+  if (run.meta.timed) {
+    const T = 45000;
+    timer = setInterval(() => {
+      const left = T - (Date.now() - run.t0);
+      const tb = $('tb');
+      if (tb) tb.style.width = Math.max(0, 100 * left / T) + '%';
+      if (left <= 0 && !run.done) { app.querySelectorAll('.opt, .ans, #val').forEach(x => x.disabled = true); answer(false, 'Temps écoulé.'); }
+    }, 250);
+  }
+}
+function answer(good, extra) {
+  clearInterval(timer);
+  run.done = true;
+  const q = run.list[run.k], s = Object.assign({}, st(q.i)), now = Date.now();
+  let gain = 0, memo = '';
+  if (good) {
+    run.combo++; run.best = Math.max(run.best, run.combo); run.ok++;
+    gain = 10 * mult();
+    if (Date.now() - run.t0 < 10000) gain += 3;
+    run.score += gain;
+    if (s.box === 0 || s.due <= now) { s.box = Math.min(3, s.box + 1); s.due = now + (DELAY[s.box] || 0); memo = s.box === 3 ? 'Mémoire : acquis.' : 'Mémoire : cran ' + s.box + ' sur 3.'; }
+    else memo = 'Déjà réussie récemment : elle montera d\'un cran après le délai.';
+  } else {
+    run.combo = 0; run.lives--; run.score = Math.max(0, run.score - 5);
+    s.box = Math.max(0, s.box - 1); s.due = 0;
+    run.miss.push(q);
+    memo = 'Cette question reviendra dans la Patrouille du jour.';
+  }
+  s.seen = now; S.q[q.i] = s; save();
+  const last = run.k + 1 >= run.list.length || run.lives <= 0;
+  $('hb').disabled = true;
+  $('fb').innerHTML = '<div class="fb ' + (good ? 'good' : 'bad') + ' pop" role="status"><h3>' + (good ? ICON.ok + '+' + gain : ICON.ko + '−5') + '</h3>' +
+    (extra ? '<pre class="code">' + esc(extra) + '</pre>' : '') + '<p>' + fmt(q.e) + '</p>' +
+    (q.out ? '<pre class="out">' + esc(q.out) + '</pre>' : '') + '<div class="row between"><span title="' + esc(memo) + '">' + pips(s.box) + '</span><button class="btn" id="next">' + (last ? 'Bilan' : 'Suivant') + ' ▶</button></div></div>';
+  fx(good);
+  if (good) {
+    let b = '<div class="burst" aria-hidden="true"><b>+' + gain + '</b>';
+    for (let i = 0; i < 18; i++) { const a = Math.PI * 2 * i / 18, d = 50 + Math.random() * 70; b += '<i style="--dx:' + Math.round(Math.cos(a) * d) + 'px;--dy:' + Math.round(Math.sin(a) * d) + 'px"></i>'; }
+    $('fb').firstChild.insertAdjacentHTML('beforeend', b + '</div>');
+  } else {
+    const p = app.querySelector('.panel'); if (p) { p.classList.remove('pop'); p.classList.add('shake'); }
+  }
+  $('next').focus();
+  $('next').onclick = () => { if (last) endRun(); else { run.k++; showQ(); } };
+}
+/* ---------- Habillage visuel : icones, vaisseau, extraterrestres, planetes ---------- */
+const ICON = {
+  star: '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path fill="var(--warn)" d="M12 2l3 6.5 7 .8-5.2 4.8 1.5 7L12 17.6 5.7 21l1.5-7L2 9.3l7-.8z"/></svg>',
+  shield: '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path fill="currentColor" d="M12 2l8 3v6c0 5-3.4 9.3-8 11-4.6-1.7-8-6-8-11V5z"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor"/><path d="M8 11V8a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
+  flame: '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path fill="var(--bad)" d="M12 2c1 4 5 6 5 11a5 5 0 01-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-10z"/></svg>',
+  rocket: '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><path fill="var(--cell)" d="M12 2c4 3 6 7 6 12l-3 3H9l-3-3c0-5 2-9 6-12z"/><circle cx="12" cy="10" r="2" fill="var(--bg)"/></svg>',
+  ok: '<svg viewBox="0 0 24 24" class="mark" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="var(--good)"/><path d="M6 12.5l4 4 8-9" stroke="var(--bg)" stroke-width="3" fill="none" stroke-linecap="round"/></svg>',
+  ko: '<svg viewBox="0 0 24 24" class="mark" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="var(--bad)"/><path d="M7.5 7.5l9 9M16.5 7.5l-9 9" stroke="var(--bg)" stroke-width="3" stroke-linecap="round"/></svg>',
+  radar: '<svg viewBox="0 0 48 48" class="radar" aria-hidden="true"><circle cx="24" cy="24" r="22" fill="var(--term)" stroke="var(--cell)" stroke-width="2"/><circle cx="24" cy="24" r="12" fill="none" stroke="var(--line)"/><path class="sw" d="M24 24 L24 2 A22 22 0 0 1 43 13 Z" fill="var(--cell)" opacity="0.5"/></svg>'
+};
+const SHIP = '<svg viewBox="-12 0 92 48" class="ship" aria-hidden="true"><path class="fl" d="M4 24 L-10 18 L-4 24 L-10 30Z" fill="var(--warn)"/><path d="M22 12 L10 2 H26 L36 12Z M22 36 L10 46 H26 L36 36Z" fill="var(--accent)"/><path d="M4 24 L22 12 H50 C62 12 74 18 78 24 C74 30 62 36 50 36 H22 Z" fill="var(--ink)"/><circle cx="54" cy="24" r="6" fill="var(--cell)"/></svg>';
+const LOOK = {
+  ops: ['#ffb347', '#ff5d5d', 2, -5], str: ['#ff7ac8', '#ffd166', 3, 5], ptr: ['#59d2ff', '#b18cff', 1, 5], mem: ['#c7a26b', '#7df0c8', 2, -4],
+  file: ['#9be564', '#ffd166', 3, 4], st: ['#b18cff', '#59d2ff', 2, 6], mod: ['#ffd166', '#ff7ac8', 1, -3], gen: ['#e6e9ff', '#7df0c8', 3, 3]
+};
+const TIPS = ['Réponds de tête avant de regarder les choix.', '15 minutes par jour valent mieux qu\'une heure d\'un coup.', 'Une erreur corrigée se retient très bien.', 'Devine ce que le code affiche avant de valider.', 'Mélange les secteurs avec la patrouille.'];
+
+function alien(id, cls) {
+  const L = LOOK[id], n = L[2], xs = n === 1 ? [32] : n === 2 ? [22, 42] : [16, 32, 48];
+  let e = '';
+  xs.forEach(x => { e += '<circle cx="' + x + '" cy="30" r="' + (n === 1 ? 10 : 7) + '" fill="#fff"/><circle class="pu" cx="' + x + '" cy="31" r="' + (n === 1 ? 5 : 3.5) + '" fill="#111"/>'; });
+  return '<svg viewBox="0 0 64 64" class="alien ' + (cls || '') + '" aria-hidden="true"><path d="M20 14 L14 3 M44 14 L50 3" stroke="' + L[0] + '" stroke-width="3" stroke-linecap="round"/><circle cx="14" cy="3" r="3" fill="' + L[1] + '"/><circle cx="50" cy="3" r="3" fill="' + L[1] + '"/>' +
+    '<path d="M14 52 q-4 8 -8 8 M26 55 q-2 7 -5 8 M38 55 q2 7 5 8 M50 52 q4 8 8 8" stroke="' + L[0] + '" stroke-width="4" fill="none" stroke-linecap="round"/>' +
+    '<path d="M8 34 C8 16 20 10 32 10 S56 16 56 34 C56 48 48 54 32 54 S8 48 8 34Z" fill="' + L[0] + '"/>' + e +
+    '<path d="M24 44 q8 ' + L[3] + ' 16 0" stroke="#111" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>';
+}
+function ring(p, id, cls) {
+  const L = LOOK[id];
+  return '<span class="pl ' + (cls || '') + '" style="--c1:' + L[0] + ';--c2:' + L[1] + '"><svg viewBox="0 0 100 100" class="rg" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="none" stroke="var(--cell-empty)" stroke-width="5"/>' +
+    '<circle cx="50" cy="50" r="46" fill="none" stroke="var(--cell)" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + (2.89 * p).toFixed(1) + ' 289" transform="rotate(-90 50 50)"/></svg><span class="planet"></span></span>';
+}
+function pips(n) { return '<span class="pips">' + [1, 2, 3].map(i => '<i class="' + (i <= n ? 'on' : '') + '"></i>').join('') + '</span>'; }
+
+function stats() {
+  $('stats').innerHTML =
+    '<div class="stat" title="Points">' + ICON.star + '<b>' + S.xp + '</b></div>' +
+    '<div class="stat" title="Vaisseau réparé">' + ICON.rocket + '<b>' + pct(Q) + ' %</b></div>' +
+    '<div class="stat" title="Jours d\'affilée">' + ICON.flame + '<b>' + S.streak + ' j</b></div>';
+}
+
+function home() {
+  stats();
+  const due = dueList(), g = pct(Q);
+  let h = '<section class="hero pop">' + SHIP + '<div class="herotxt"><div class="big">' + g + ' %</div><div>' + cells(g) + '</div><p class="tag">' + esc(rank()) + '</p></div></section>' +
+    say('ZYX', '<p class="small">' + esc(S.xp ? TIPS[new Date().getDate() % TIPS.length] : 'Bip ! Vaisseau en panne. Choisis une planète pour le réparer.') + '</p>') +
+    '<button class="patrol" id="rev"' + (due.length ? '' : ' disabled') + ' aria-label="Patrouille du jour, ' + due.length + ' questions à revoir">' + ICON.radar + '<span>Patrouille</span><span class="badge">' + due.length + '</span></button>' +
+    '<div class="map">';
+  for (const n of NOTIONS) {
+    const p = pct(qs(n.id));
+    h += '<button class="world" data-n="' + n.id + '" title="' + esc(n.desc) + '">' + ring(p, n.id) + '<b>' + esc(n.name) + '</b><span class="pct">' + p + ' %</span></button>';
+  }
+  h += '</div><details class="panel"><summary>Règles du jeu</summary><ul class="tips small">' +
+    '<li>Bonne réponse : 10 points, et plus encore si tu enchaînes.</li>' +
+    '<li>Erreur : 5 points et un bouclier en moins. Un indice de ZYX coûte 5 points.</li>' +
+    '<li>Le pourcentage monte quand tu réussis de nouveau une question plus tard : après 20 minutes, puis après 1 jour.</li>' +
+    '<li>La progression est enregistrée dans ce navigateur.</li></ul>' +
+    '<div class="row"><button class="btn ghost" id="reset">Tout remettre à zéro</button><span id="resetc" hidden class="row"><span class="small">Tout effacer ?</span><button class="btn" id="resety">Oui</button><button class="btn ghost" id="resetn">Non</button></span></div></details>';
+  app.innerHTML = h;
+  app.querySelectorAll('[data-n]').forEach(b => b.onclick = () => notion(b.dataset.n));
+  $('rev').onclick = () => startRun(shuffle(due).slice(0, 8), { title: 'Patrouille', timed: false, back: home });
+  $('reset').onclick = () => { $('resetc').hidden = false; };
+  $('resetn').onclick = () => { $('resetc').hidden = true; };
+  $('resety').onclick = () => { S = { xp: 0, q: {}, streak: 0, last: '' }; save(); home(); };
+}
+
+function notion(id) {
+  stats();
+  const n = NOTIONS.find(x => x.id === id), all = qs(id), fresh = all.every(q => !st(q.i).seen);
+  let h = '<div class="row"><button class="btn ghost" id="back" aria-label="Retour à la galaxie">◀ Galaxie</button></div>' +
+    '<section class="hero pop">' + ring(pct(all), id, 'xl') + '<div class="herotxt"><p class="tag">' + esc(WORLD[id][0]) + '</p><h2>' + esc(n.name) + '</h2>' +
+    '<div class="row">' + alien(id, 'sm') + '<span class="small muted">Gardien : ' + esc(WORLD[id][1]) + '</span></div></div></section><div class="path">';
+  for (const l of [1, 2, 3]) {
+    const list = qs(id, l), ok = unlocked(id, l);
+    h += '<button class="node" data-l="' + l + '"' + (ok ? '' : ' disabled') + ' aria-label="Niveau ' + l + ', ' + LVL[l] + (ok ? '' : ', verrouillé') + '"><span class="num">' + (ok ? l : ICON.lock) + '</span>' +
+      pips(Math.round(pct(list) / 33.4)) + '<span class="small">' + LVL[l] + '</span></button>';
+  }
+  h += '</div><details class="panel"' + (fresh ? ' open' : '') + '><summary>Notes de ZYX</summary><ul class="tips">' + n.tips.map(t => '<li>' + fmt(t) + '</li>').join('') + '</ul></details>';
+  app.innerHTML = h;
+  $('back').onclick = home;
+  app.querySelectorAll('[data-l]').forEach(b => b.onclick = () => {
+    const l = +b.dataset.l;
+    const list = shuffle(qs(id, l)).sort((a, c) => st(a.i).box - st(c.i).box || st(a.i).seen - st(c.i).seen).slice(0, 6);
+    startRun(list, { title: WORLD[id][0], timed: l === 3, foe: WORLD[id][1], back: () => notion(id) });
+  });
+}
+
+function sceneTop() {
+  let sh = '', hp = '';
+  for (let i = 0; i < 3; i++) sh += '<span class="sh' + (i < run.lives ? '' : ' off') + '">' + ICON.shield + '</span>';
+  for (let i = 0; i < run.list.length; i++) hp += '<i class="' + (i < run.list.length - run.ok ? '' : 'off') + '"></i>';
+  return '<span class="row" style="gap:2px" aria-label="' + run.lives + ' boucliers">' + sh + '</span>' +
+    '<span class="row" style="gap:6px">' + ICON.star + '<b>' + run.score + '</b>' + (mult() > 1 ? '<b class="combo">×' + mult() + '</b>' : '') + '</span>' +
+    '<span class="hp" aria-label="Énergie de l\'adversaire">' + hp + '</span>';
+}
+function scene(q) {
+  return '<div class="scene"><div class="sctop" id="sctop">' + sceneTop() + '</div><div id="shipw">' + SHIP + '</div><i id="laser" class="laser"></i><div id="alw">' + alien(q.n) + '</div>' +
+    '<button class="x" id="quit" aria-label="Quitter la partie">✕</button></div>';
+}
+function fx(good) {
+  $('sctop').innerHTML = sceneTop();
+  $('laser').className = 'laser go' + (good ? '' : ' back');
+  $(good ? 'alw' : 'shipw').classList.add('hit');
+}
+
+function endRun() {
+  const d = today();
+  if (S.last !== d) {
+    const y = new Date(Date.now() - 864e5); const yd = y.getFullYear() + '-' + (y.getMonth() + 1) + '-' + y.getDate();
+    S.streak = S.last === yd ? S.streak + 1 : 1; S.last = d;
+  }
+  S.xp += run.score; save(); stats();
+  const dead = run.lives <= 0, total = run.list.length;
+  const stars = dead ? 0 : run.ok === total ? 3 : run.ok / total >= 0.6 ? 2 : 1;
+  const foe = run.list[Math.min(run.k, total - 1)].n;
+  let h = '<section class="panel pop center"><div class="stars" aria-label="' + stars + ' étoiles sur 3">' +
+    [0, 1, 2].map(i => '<span class="st' + (i < stars ? ' on' : '') + '" style="animation-delay:' + (0.2 * i) + 's">' + ICON.star + '</span>').join('') + '</div>' +
+    '<div class="row" style="justify-content:center;gap:28px">' + SHIP + alien(foe, dead ? '' : 'dead') + '</div>' +
+    '<h2>' + (dead ? 'Boucliers à zéro' : stars === 3 ? 'Victoire parfaite' : 'Victoire') + '</h2>' +
+    '<div class="row" style="gap:26px;justify-content:center"><span class="row" title="Points gagnés">' + ICON.star + '<span class="big">' + run.score + '</span></span>' +
+    '<span class="row" title="Bonnes réponses">' + ICON.ok + '<span class="big">' + run.ok + ' / ' + total + '</span></span>' +
+    '<span class="row" title="Meilleure série">' + ICON.flame + '<span class="big">' + run.best + '</span></span></div>';
+  if (run.miss.length) {
+    h += '<details style="align-self:stretch;text-align:left"><summary>À revoir (' + run.miss.length + ')</summary>' +
+      run.miss.map(q => '<div class="miss"><p><b>' + fmt(q.q) + '</b></p><p class="small">' + fmt(q.e) + '</p></div>').join('') + '</details>';
+  }
+  h += '<div class="row" style="justify-content:center"><button class="btn" id="again">Continuer ▶</button><button class="btn ghost" id="homeb">Galaxie</button></div></section>';
+  app.innerHTML = h;
+  $('again').onclick = run.meta.back;
+  $('homeb').onclick = home;
+}
+
+/* ---------- Ciel etoile anime ---------- */
+(function () {
+  const c = $('sky');
+  if (!c || !c.getContext) return;
+  const x = c.getContext('2d'), calm = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W, H, stars = [], shot = null;
+  function size() {
+    W = c.width = window.innerWidth; H = c.height = window.innerHeight; stars = [];
+    for (let i = 0; i < Math.round(W * H / 6000); i++) stars.push({ x: Math.random() * W, y: Math.random() * H, z: Math.random() * 1.6 + 0.4, t: Math.random() * 6.28 });
+  }
+  function draw(t) {
+    x.clearRect(0, 0, W, H);
+    for (const s of stars) {
+      if (!calm) { s.y += s.z * 0.12; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
+      x.fillStyle = 'rgba(207,214,255,' + (0.45 + 0.4 * Math.sin(t / 700 + s.t)).toFixed(2) + ')';
+      x.fillRect(s.x, s.y, s.z, s.z);
+    }
+    if (calm) return;
+    if (!shot && Math.random() < 0.004) shot = { x: Math.random() * W, y: 0 };
+    if (shot) {
+      x.strokeStyle = 'rgba(125,240,200,0.8)'; x.lineWidth = 2; x.beginPath(); x.moveTo(shot.x, shot.y); x.lineTo(shot.x - 40, shot.y - 24); x.stroke();
+      shot.x += 10; shot.y += 6; if (shot.y > H || shot.x > W + 40) shot = null;
+    }
+    requestAnimationFrame(draw);
+  }
+  size(); window.addEventListener('resize', size); draw(0);
+})();
+
+/* ---------- Copier l'exercice pour une IA : elle doit guider, pas repondre ---------- */
+function aiText(q) {
+  let t = 'Je révise le langage C et je bloque sur cet exercice.\n' +
+    'Ne me donne surtout pas la réponse. Donne-moi un seul indice à la fois, sous forme de question ou de piste, puis attends ma réponse. ' +
+    'Si je me trompe, explique-moi pourquoi sans donner la solution. Ne donne la réponse que si je la demande clairement après plusieurs essais.\n\n' +
+    'Énoncé : ' + q.q.replace(/`/g, '') + '\n';
+  if (q.pre) t += '\nCode déjà écrit :\n' + q.pre + '\n';
+  if (q.t === 'qcm') {
+    if (q.c) t += '\nCode :\n' + q.c + '\n';
+    t += '\nChoix proposés :\n' + q.o.map(o => '- ' + o).join('\n') + '\n';
+  } else if (q.t === 'trou') {
+    t += '\nCode à compléter (il faut trouver ce qui remplace ___) :\n' + q.c + '\n';
+  } else if (q.t === 'bug') {
+    t += '\nCode (une des lignes contient un bug à trouver) :\n' + q.c.map((l, i) => (i + 1) + '. ' + l).join('\n') + '\n';
+  } else {
+    t += '\nLignes à remettre dans le bon ordre (données ici dans le désordre) :\n' + q.c.slice().sort().map(l => '- ' + l.trim()).join('\n') + '\n';
+  }
+  return t;
+}
+function copyAI(q, btn) {
+  const t = aiText(q);
+  const done = ok => { btn.textContent = ok ? 'Copié !' : 'Copie impossible'; setTimeout(() => { btn.textContent = 'Copier pour une IA'; }, 1800); };
+  const old = () => {
+    try {
+      const a = document.createElement('textarea');
+      a.value = t; a.style.position = 'fixed'; a.style.opacity = '0';
+      document.body.appendChild(a); a.select();
+      const ok = document.execCommand('copy');
+      a.remove(); done(ok);
+    } catch (e) { done(false); }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(() => done(true), old);
+  else old();
+}
+
+home();
+</script>
+
+</body>
+</html>

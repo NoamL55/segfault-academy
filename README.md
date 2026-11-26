@@ -4,6 +4,8 @@ Mini-jeux pour apprendre le langage C notion par notion : pointeurs, chaînes, a
 
 Le site tient dans un seul fichier, `index.html`. Il n'a besoin d'aucune installation ni d'aucun serveur.
 
+**Jouer en ligne, depuis n'importe quel appareil :** https://noaml55.github.io/segfault-academy/
+
 ## Jouer sur un ordinateur
 
 Double-clique sur `index.html` : il s'ouvre dans ton navigateur.
